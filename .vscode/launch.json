@@ -1,0 +1,14 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "JoA (Android)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "R3CX406MKPY",
+      "args": [
+        "--dart-define=XAI_API_KEY=YOUR_KEY_HERE"
+      ]
+    }
+  ]
+}
