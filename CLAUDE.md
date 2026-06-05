@@ -41,10 +41,15 @@ flutter build apk \
 - `http`: API 호출
 - `dart:html`: 브라우저 다운로드 (웹 전용)
 
+## 배포
+- **웹앱 URL**: https://web-tau-nine-22.vercel.app
+- **GitHub**: https://github.com/zzindori/joa
+- Vercel CLI로 직접 배포 (GitHub 자동 배포 아님)
+
 ## 웹 빌드 및 배포
 ```bash
-flutter build web \
-  --dart-define=XAI_API_KEY=your_key
+flutter build web --dart-define=XAI_API_KEY=your_key
+vercel deploy build/web --prod --yes
 ```
 - 이미지는 메모리에만 저장 (새로고침 시 히스토리 초기화)
 - 갤러리 저장 → 브라우저 다운로드로 대체
