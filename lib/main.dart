@@ -417,7 +417,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
             Text('무료 이미지 5장을 모두 사용했습니다.'),
             SizedBox(height: 8),
             Text(
-              '연간 이용권을 구매하면\n하루 10장씩 1년간 이용할 수 있습니다.',
+              '월 이용권을 구매하면\n하루 10장씩 한 달간 이용할 수 있습니다.',
               style: TextStyle(fontSize: 13),
             ),
           ],
@@ -493,7 +493,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
                 ]),
                 const SizedBox(height: 4),
                 const Text(
-                  '연간 이용권 구매 후 코드를 입력하세요',
+                  '월 이용권 구매 후 코드를 입력하세요',
                   style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),
               ],

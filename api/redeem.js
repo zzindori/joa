@@ -34,7 +34,7 @@ export default async function handler(req, res) {
   }
 
   const expiresAt = new Date();
-  expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+  expiresAt.setMonth(expiresAt.getMonth() + 1);
 
   return res.status(200).json({
     success: true,
