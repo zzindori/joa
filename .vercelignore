@@ -1,0 +1,17 @@
+android/
+ios/
+macos/
+linux/
+windows/
+test/
+assets/
+web/
+lib/
+pubspec.yaml
+pubspec.lock
+analysis_options.yaml
+*.iml
+.metadata
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies

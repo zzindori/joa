@@ -48,12 +48,21 @@ flutter build apk \
 
 ## 웹 빌드 및 배포
 ```bash
-flutter build web --dart-define=XAI_API_KEY=your_key
+flutter build web
+cp api/image.js build/web/api/image.js   # 반드시 먼저 복사!
 vercel deploy build/web --prod --yes
 ```
+- **주의**: `vercel deploy build/web`은 `build/web` 안에 있는 파일만 배포함.
+  `api/image.js`를 `build/web/api/`에 복사하지 않으면 이전 버전 API가 그대로 유지됨.
+- XAI_API_KEY는 Vercel 환경변수로 관리 (웹 빌드 시 `--dart-define` 불필요)
 - 이미지는 메모리에만 저장 (새로고침 시 히스토리 초기화)
 - 갤러리 저장 → 브라우저 다운로드로 대체
 - `dart:html` 사용으로 WASM 빌드 불가 (JS 빌드만 지원)
+
+### API 동작 방식
+- xAI는 항상 URL로 응답함 (`b64_json` 미지원)
+- `api/image.js`가 서버에서 URL을 fetch → base64 변환 후 Flutter에 전달
+- Flutter가 직접 `imgen.x.ai`를 fetch하면 CORS 오류 발생
 
 ## 주요 구현 메모
 
@@ -63,6 +72,11 @@ vercel deploy build/web --prod --yes
 - 다운로드: `html.Blob` + `AnchorElement` 클릭으로 처리
 
 ## 변경 히스토리
+
+### 2026-06-06
+- CORS 수정: `api/image.js`에서 xAI URL을 서버에서 base64로 변환
+- 배포 절차 수정: `api/image.js`를 `build/web/api/`에 복사 후 배포
+- 이미지 영역에 다운로드 버튼(FAB) 추가
 
 ### 2026-06-05
 - CLAUDE.md 최초 작성

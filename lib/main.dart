@@ -2,9 +2,12 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:http/http.dart' as http;
-import 'package:image_gallery_saver/image_gallery_saver.dart';
+
+import 'download_helper.dart';
 
 const _grokApiKey = String.fromEnvironment('XAI_API_KEY');
 const _grokBaseUrl = String.fromEnvironment(
@@ -13,7 +16,7 @@ const _grokBaseUrl = String.fromEnvironment(
 );
 const _grokImageModel = String.fromEnvironment(
   'GROK_IMAGE_MODEL',
-  defaultValue: 'grok-2-image-1212',
+  defaultValue: 'grok-imagine-image',
 );
 
 enum ImageCategory {
@@ -82,12 +85,21 @@ const _prompts = {
 };
 
 class _HistoryItem {
-  final Uint8List bytes;
+  final Uint8List? bytes;
+  final String? imageUrl;
   final String filename;
-  _HistoryItem(this.bytes, this.filename);
+  _HistoryItem.fromBytes(Uint8List this.bytes, this.filename) : imageUrl = null;
+  _HistoryItem.fromUrl(String this.imageUrl, this.filename) : bytes = null;
+
+  Widget buildImage({BoxFit fit = BoxFit.contain}) {
+    if (imageUrl != null) return Image.network(imageUrl!, fit: fit);
+    return Image.memory(bytes!, fit: fit);
+  }
 }
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Hive.initFlutter();
   runApp(const JoaApp());
 }
 
@@ -123,6 +135,48 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
   BodyType _selectedBodyType = BodyType.normal;
   bool _useWeather = false;
   String? _weatherInfo;
+  Box? _historyBox;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    final box = await Hive.openBox('joa_history');
+    _historyBox = box;
+    final keys = box.keys.cast<String>().toList()..sort();
+    final loaded = <_HistoryItem>[];
+    for (final key in keys.reversed) {
+      final b64 = box.get(key) as String?;
+      if (b64 == null) continue;
+      try {
+        loaded.add(_HistoryItem.fromBytes(base64Decode(b64), key));
+      } catch (_) {}
+    }
+    if (mounted && loaded.isNotEmpty) {
+      setState(() {
+        _history.addAll(loaded);
+        _currentImage = _history.first;
+      });
+    }
+  }
+
+  Future<void> _saveToBox(_HistoryItem item) async {
+    if (item.bytes == null) return;
+    await _historyBox?.put(item.filename, base64Encode(item.bytes!));
+    // 최대 30개 유지
+    final box = _historyBox;
+    if (box != null && box.length > 30) {
+      final oldest = (box.keys.cast<String>().toList()..sort()).first;
+      await box.delete(oldest);
+    }
+  }
+
+  Future<void> _deleteFromBox(String filename) async {
+    await _historyBox?.delete(filename);
+  }
 
   Future<String?> _fetchWeatherHint() async {
     try {
@@ -161,7 +215,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
   }
 
   Future<void> _requestImage(ImageCategory category) async {
-    if (_grokApiKey.isEmpty) {
+    if (!kIsWeb && _grokApiKey.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('XAI_API_KEY가 설정되지 않았습니다.')),
       );
@@ -211,12 +265,14 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
         }
       }
 
-      final uri = Uri.parse('$_grokBaseUrl/images/generations');
+      final uri = kIsWeb
+          ? Uri.parse('/api/image')
+          : Uri.parse('$_grokBaseUrl/images/generations');
       final response = await http.post(
         uri,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_grokApiKey',
+          if (!kIsWeb) 'Authorization': 'Bearer $_grokApiKey',
         },
         body: jsonEncode({
           'model': _grokImageModel,
@@ -237,24 +293,27 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
       }
 
       final item = data.first as Map<String, dynamic>;
-      final Uint8List imageBytes;
+      final filename = '${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final _HistoryItem historyItem;
 
       if (item['b64_json'] is String) {
-        imageBytes = base64Decode(item['b64_json'] as String);
+        historyItem = _HistoryItem.fromBytes(base64Decode(item['b64_json'] as String), filename);
       } else if (item['url'] is String) {
-        final imgRes = await http.get(Uri.parse(item['url'] as String));
-        imageBytes = imgRes.bodyBytes;
+        if (kIsWeb) {
+          historyItem = _HistoryItem.fromUrl(item['url'] as String, filename);
+        } else {
+          final imgRes = await http.get(Uri.parse(item['url'] as String));
+          historyItem = _HistoryItem.fromBytes(imgRes.bodyBytes, filename);
+        }
       } else {
         throw Exception('지원되지 않는 응답 형식입니다.');
       }
-
-      final filename = '${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final historyItem = _HistoryItem(imageBytes, filename);
 
       setState(() {
         _currentImage = historyItem;
         _history.insert(0, historyItem);
       });
+      await _saveToBox(historyItem);
     } catch (error) {
       setState(() {
         _errorMessage = error.toString();
@@ -267,11 +326,10 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
   }
 
   Future<void> _downloadImage(_HistoryItem item) async {
-    final result = await ImageGallerySaver.saveImage(item.bytes, name: item.filename);
+    final error = await saveImageToDevice(item.bytes, item.imageUrl, item.filename);
     if (mounted) {
-      final ok = result['isSuccess'] == true;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(ok ? '갤러리에 저장했습니다.' : '저장 실패: ${result['errorMessage']}')),
+        SnackBar(content: Text(error == null ? '저장했습니다.' : '저장 실패: $error')),
       );
     }
   }
@@ -298,6 +356,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
               title: const Text('삭제', style: TextStyle(color: Colors.red)),
               onTap: () {
                 Navigator.pop(ctx);
+                _deleteFromBox(item.filename);
                 setState(() {
                   if (_currentImage == item) _currentImage = null;
                   _history.removeAt(index);
@@ -367,7 +426,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
                         child: Text(
                           _useWeather && _weatherInfo != null
                               ? '🌤\n$_weatherInfo'
-                              : '🌤\n날씨',
+                              : '🌤\n날씨코디',
                           textAlign: TextAlign.center,
                           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                         ),
@@ -387,10 +446,23 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
                   const SizedBox(width: 8),
                   ...BodyType.values.map((type) => Padding(
                     padding: const EdgeInsets.only(right: 6),
-                    child: ChoiceChip(
-                      label: Text(type.label),
-                      selected: _selectedBodyType == type,
-                      onSelected: (_) => setState(() => _selectedBodyType = type),
+                    child: GestureDetector(
+                      onTap: () => setState(() => _selectedBodyType = type),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: _selectedBodyType == type ? Colors.indigo : Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          type.label,
+                          style: TextStyle(
+                            color: _selectedBodyType == type ? Colors.white : Colors.black87,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
                     ),
                   )),
                   const SizedBox(width: 12),
@@ -425,13 +497,25 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
                           textAlign: TextAlign.center,
                         ),
                       )
-                    : InteractiveViewer(
-                        minScale: 1.0,
-                        maxScale: 5.0,
-                        child: Image.memory(
-                          _currentImage!.bytes,
-                          fit: BoxFit.contain,
-                        ),
+                    : Stack(
+                        children: [
+                          InteractiveViewer(
+                            minScale: 1.0,
+                            maxScale: 5.0,
+                            child: _currentImage!.buildImage(fit: BoxFit.contain),
+                          ),
+                          Positioned(
+                            right: 8,
+                            bottom: 8,
+                            child: FloatingActionButton.small(
+                              heroTag: 'download',
+                              onPressed: () => _downloadImage(_currentImage!),
+                              backgroundColor: Colors.black54,
+                              foregroundColor: Colors.white,
+                              child: const Icon(Icons.download),
+                            ),
+                          ),
+                        ],
                       ),
               ),
             ),
@@ -465,10 +549,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
                                 : null,
                             child: AspectRatio(
                               aspectRatio: 9 / 16,
-                              child: Image.memory(
-                                item.bytes,
-                                fit: BoxFit.cover,
-                              ),
+                              child: item.buildImage(fit: BoxFit.cover),
                             ),
                           ),
                         ),
