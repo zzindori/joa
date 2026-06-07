@@ -12,16 +12,16 @@ import 'download_helper.dart';
 
 const _geminiApiKey = String.fromEnvironment('GEMINI_API_KEY');
 const _geminiModel = 'gemini-2.5-flash-image';
-
-// ── 프리미엄 설정 ──
 const _maxFreeImages = 5;
 const _maxDailyImages = 30;
-const _storeUrl = 'https://smartstore.naver.com/wowhit'; // 이용권 상품 페이지
+const _storeUrl = 'https://smartstore.naver.com/wowhit';
+
+// ── 카테고리 ──────────────────────────────────────────
 
 enum ImageCategory {
-  landscape('풍경', '🌄', Color(0xFF4CAF50)),
+  landscape('풍경', '🌄', Color(0xFF43A047)),
   woman('여자', '👩', Color(0xFFE91E8C)),
-  man('남자', '👨', Color(0xFF2196F3));
+  man('남자', '👨', Color(0xFF1E88E5));
 
   const ImageCategory(this.label, this.emoji, this.color);
   final String label;
@@ -29,64 +29,122 @@ enum ImageCategory {
   final Color color;
 }
 
+// ── 옵션 열거형 ───────────────────────────────────────
+
+enum AgeGroup {
+  twenties('20대'),
+  thirties('30대'),
+  forties('40대'),
+  fifties('50대+');
+
+  const AgeGroup(this.label);
+  final String label;
+
+  String prompt(ImageCategory cat) {
+    final isWoman = cat == ImageCategory.woman;
+    return switch (this) {
+      twenties => isWoman
+          ? 'in her 20s, youthful beautiful face, fresh attractive appearance'
+          : 'in his 20s, handsome youthful face, fresh attractive appearance',
+      thirties => isWoman
+          ? 'in her 30s, elegant mature beautiful face, sophisticated appearance'
+          : 'in his 30s, mature handsome face, refined distinguished appearance',
+      forties => isWoman
+          ? 'in her 40s, graceful charming face, dignified elegant appearance'
+          : 'in his 40s, distinguished mature face, confident dignified appearance',
+      fifties => isWoman
+          ? 'in her 50s, distinguished elegant face, graceful dignified appearance'
+          : 'in his 50s, distinguished dignified face, authoritative mature appearance',
+    };
+  }
+}
+
 enum BodyType {
   slim('슬림', 'slim petite figure, slender and lean body'),
   normal('보통', 'average normal figure, regular build'),
-  chubby('통통', 'slightly chubby curvy figure, soft fuller body, moderately overweight'),
-  athletic('뚱뚱', 'overweight chubby body, large figure, big size body');
+  chubby('통통', 'slightly chubby curvy figure, soft fuller body'),
+  big('뚱뚱', 'overweight chubby body, large figure, big size body');
 
   const BodyType(this.label, this.description);
   final String label;
   final String description;
 }
 
-const _prompts = {
-  ImageCategory.landscape: [
-    'A breathtaking aurora borealis over snowy mountains, vibrant green and purple colors, cinematic',
-    'A golden sunset over a calm ocean, soft reflections on the water, serene and beautiful',
-    'Cherry blossoms in full bloom along a quiet path, soft pink petals falling gently',
-    'A magical forest with glowing fireflies at dusk, enchanting and dreamy atmosphere',
-    'A colorful underwater world with tropical fish and coral reefs, vivid and peaceful',
-    'A vast lavender field under a pastel purple sunset sky, dreamy landscape',
-    'A crystal clear mountain lake reflecting snow-capped peaks at golden hour',
-    'A starry night sky over a quiet countryside, milky way clearly visible, peaceful',
-    'A garden filled with colorful wildflowers in soft morning light, cheerful and bright',
-    'A tiny village covered in snow at night, warm light from windows, cozy winter scene',
-    'Rolling green hills under a dramatic cloudy sky with sunbeams breaking through',
-    'A lone lighthouse on a rocky cliff at sunset, waves crashing below, dramatic scenery',
-    'A hot air balloon floating over colorful autumn forests, joyful and whimsical',
-    'A peaceful Japanese Zen garden with raked sand, cherry blossoms, and stone lanterns',
-  ],
-  ImageCategory.woman: [
-    'Full body head to toe shot of a Korean woman with K-pop idol-like beauty, full figure from head to feet, wearing trendy oversized beige trench coat, slim jeans, white sneakers, Seoul street fashion, feet clearly visible',
-    'Full body head to toe shot of a Korean woman with celebrity-like visuals, entire body from head to feet, wearing cozy knit sweater, wide leg trousers, loafers, minimal accessories, chic daily look, shoes visible',
-    'Full body head to toe shot of a Korean woman with movie star-like appearance, complete figure from top to bottom, wearing chic white button-up shirt, high waist straight jeans, small shoulder bag, white sneakers, clean Korean style',
-    'Full body head to toe shot of a Korean woman with idol-like charm and beauty, whole body visible including feet, wearing soft pastel hoodie, jogger pants, chunky sneakers, effortless Korean street look',
-    'Full body head to toe shot of a Korean woman with actress-level visuals, full figure from hair to shoes, wearing elegant slip dress over long sleeve top, ankle boots, layered necklace, trendy Korean style',
-    'Full body head to toe shot of a Korean woman with K-pop celebrity-like face, entire body visible, wearing cropped leather jacket, high waist flare jeans, pointed toe heels, chic Korean urban fashion, heels visible',
-    'Full body head to toe shot of a Korean woman with supermodel-like beauty, complete look from head to feet, wearing casual linen wide pants, fitted tank top, open shirt layer, sandals, summer Korean daily look',
-    'Full body head to toe shot of a Korean woman with drama actress-like visuals, full figure including shoes, wearing oversized cardigan, mini skirt, knee-high socks, loafers, adorable Korean campus look',
-    'Full body head to toe shot of a Korean woman with top star-like appearance, whole body from head to toe, wearing tailored blazer, straight cut trousers, white tee, oxford shoes, smart casual Korean style',
-    'Full body head to toe shot of a Korean woman with idol group member-like beauty, entire figure visible, wearing puffer vest, long sleeve tee, wide cargo pants, sneakers all visible, sporty Korean street fashion',
-  ],
-  ImageCategory.man: [
-    'Full body head to toe shot of a Korean man with K-pop idol-like visuals, full figure from head to feet, wearing oversized graphic tee, straight leg jeans, clean white sneakers fully visible, casual Korean street fashion',
-    'Full body head to toe shot of a Korean man with celebrity-like appearance, entire body from top to bottom, wearing beige trench coat, slim chino pants, white shirt, loafers visible, clean Korean daily look',
-    'Full body head to toe shot of a Korean man with movie star-like looks, complete figure head to feet, wearing cozy knit polo sweater, straight fit trousers, leather sneakers clearly shown, smart casual Korean style',
-    'Full body head to toe shot of a Korean man with idol-like charm and face, whole body including feet, wearing hoodie under open flannel shirt, slim jeans, chunky sneakers, relaxed Korean street style',
-    'Full body head to toe shot of a Korean man with actor-level visuals, full figure from hair to shoes, wearing tailored suit jacket, white tee, straight jeans, dress shoes clearly visible, stylish Korean business casual',
-    'Full body head to toe shot of a Korean man with K-pop celebrity-like appearance, entire body visible, wearing puffer jacket, turtleneck, slim pants, boots shown from top to bottom, Korean winter fashion',
-    'Full body head to toe shot of a Korean man with drama actor-like visuals, complete look head to toe, wearing linen shirt, wide leg trousers, sandals visible, minimal accessories, relaxed Korean summer fashion',
-    'Full body head to toe shot of a Korean man with top idol group member-like face, full figure including shoes, wearing varsity jacket, simple tee, straight jeans, classic sneakers, effortless Korean casual style',
-    'Full body head to toe shot of a Korean man with supermodel-like looks, whole body from head to feet, wearing long cardigan, inner tee, jogger pants, slip-on shoes visible, cozy Korean layered look',
-    'Full body head to toe shot of a Korean man with top star-like visuals, entire figure top to bottom, wearing denim jacket, striped shirt, chino shorts, canvas sneakers clearly shown, fresh Korean spring look',
-  ],
-};
+enum StyleType {
+  casual('캐주얼', 'casual everyday Korean street style outfit'),
+  office('오피스룩', 'smart Korean business casual office wear'),
+  street('스트릿', 'trendy urban Korean street fashion'),
+  formal('포멀', 'formal elegant sophisticated Korean attire');
+
+  const StyleType(this.label, this.description);
+  final String label;
+  final String description;
+}
+
+enum Season {
+  current('현재날씨', '🌤'),
+  spring('봄/가을', '🌸'),
+  summer('여름', '☀️'),
+  winter('겨울', '❄️');
+
+  const Season(this.label, this.emoji);
+  final String label;
+  final String emoji;
+
+  String get outfitHint => switch (this) {
+        spring =>
+          'light jacket or cardigan layered outfit for spring or autumn, comfortable mild weather style',
+        summer => 'light summer outfit, breathable casual clothing, warm weather style',
+        winter =>
+          'warm winter coat with scarf and boots, cold weather outfit, layered winter style',
+        _ => 'comfortable casual outfit',
+      };
+
+  String get landscapePrompt => switch (this) {
+        spring =>
+          'Beautiful spring cherry blossom landscape in Korea, soft pink petals falling gently, warm sunlight, dreamy and romantic atmosphere, cinematic quality photography',
+        summer =>
+          'Vibrant summer landscape in Korea, lush green mountains and forests, bright sunshine, clear blue sky, vivid energetic scenery, cinematic quality',
+        winter =>
+          'Serene snowy winter landscape in Korea, pristine white snow covering forests and mountains, peaceful quiet atmosphere, stunning scenic photography',
+        _ =>
+          'Beautiful scenic landscape in Korea, golden sunlight over green mountains, clear sky, cinematic quality photography',
+      };
+}
+
+enum Vibe {
+  pure('청순'),
+  chic('시크'),
+  lively('발랄'),
+  luxury('고급스러운');
+
+  const Vibe(this.label);
+  final String label;
+
+  String prompt(ImageCategory cat) {
+    final isWoman = cat == ImageCategory.woman;
+    return switch (this) {
+      pure => isWoman
+          ? 'sweet innocent feminine pure style'
+          : 'clean neat boyish fresh innocent style',
+      chic => isWoman
+          ? 'chic sophisticated stylish cool vibe'
+          : 'sophisticated cool stylish edgy vibe',
+      lively => isWoman
+          ? 'lively bright cheerful energetic feminine style'
+          : 'energetic fresh playful youthful masculine style',
+      luxury => 'luxurious high-end premium fashion style',
+    };
+  }
+}
+
+// ── 히스토리 아이템 ────────────────────────────────────
 
 class _HistoryItem {
   final Uint8List? bytes;
   final String? imageUrl;
   final String filename;
+
   _HistoryItem.fromBytes(Uint8List this.bytes, this.filename) : imageUrl = null;
   _HistoryItem.fromUrl(String this.imageUrl, this.filename) : bytes = null;
 
@@ -95,6 +153,8 @@ class _HistoryItem {
     return Image.memory(bytes!, fit: fit);
   }
 }
+
+// ── 앱 진입점 ─────────────────────────────────────────
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -108,15 +168,21 @@ class JoaApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '기분 좋아지는 이미지',
+      title: 'JoA',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.indigo,
+          brightness: Brightness.light,
+        ),
+        useMaterial3: true,
       ),
       debugShowCheckedModeBanner: false,
       home: const ImageRequestPage(),
     );
   }
 }
+
+// ── 메인 페이지 ───────────────────────────────────────
 
 class ImageRequestPage extends StatefulWidget {
   const ImageRequestPage({super.key});
@@ -126,20 +192,26 @@ class ImageRequestPage extends StatefulWidget {
 }
 
 class _ImageRequestPageState extends State<ImageRequestPage> {
-  final _random = Random();
+  // 기본 상태
   bool _isLoading = false;
   String? _errorMessage;
   _HistoryItem? _currentImage;
   final List<_HistoryItem> _history = [];
-  BodyType _selectedBodyType = BodyType.normal;
-  bool _useWeather = false;
-  String? _weatherInfo;
   Box? _historyBox;
 
-  // ── 프리미엄 상태 ──
+  // 옵션 상태
+  ImageCategory _lastCategory = ImageCategory.woman;
+  AgeGroup _ageGroup = AgeGroup.twenties;
+  BodyType _bodyType = BodyType.normal;
+  StyleType _styleType = StyleType.casual;
+  Season _season = Season.current;
+  Vibe _vibe = Vibe.chic;
+  int? _currentTempC;
+
+  // 프리미엄 상태
   Box? _settingsBox;
   int _freeUsed = 0;
-  String? _subExpiry; // "YYYY-MM-DD", null이면 미구독
+  String? _subExpiry;
   int _dailyCount = 0;
   String _dailyDate = '';
 
@@ -150,7 +222,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
     _loadSettings();
   }
 
-  // ── 히스토리 ──
+  // ── 히스토리 ────────────────────────────────────────
 
   Future<void> _loadHistory() async {
     final box = await Hive.openBox('joa_history');
@@ -186,7 +258,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
     await _historyBox?.delete(filename);
   }
 
-  // ── 날씨 ──
+  // ── 날씨 ────────────────────────────────────────────
 
   Future<({int tempC, String desc})?> _fetchWeather() async {
     try {
@@ -194,22 +266,20 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
           .get(Uri.parse('https://wttr.in/?format=j1'))
           .timeout(const Duration(seconds: 6));
       if (res.statusCode != 200) return null;
-
       final json = jsonDecode(res.body) as Map<String, dynamic>;
       final cur = (json['current_condition'] as List)[0] as Map<String, dynamic>;
       final tempC = int.parse(cur['temp_C'].toString());
       final desc = (cur['weatherDesc'] as List)[0]['value'] as String;
-      setState(() => _weatherInfo = '오늘 $tempC°C');
+      setState(() => _currentTempC = tempC);
       return (tempC: tempC, desc: desc);
-    } catch (e) {
-      debugPrint('[Weather] 날씨 조회 실패: $e');
+    } catch (_) {
       return null;
     }
   }
 
   String _weatherOutfitHint(int tempC) {
-    if (tempC <= 0)  return 'heavy winter padding coat, thick scarf, winter boots, very cold weather outfit';
-    if (tempC <= 5)  return 'heavy winter coat, knit sweater, warm pants, boots, cold weather outfit';
+    if (tempC <= 0) return 'heavy winter padding coat, thick scarf, winter boots, very cold weather outfit';
+    if (tempC <= 5) return 'heavy winter coat, knit sweater, warm pants, boots, cold weather outfit';
     if (tempC <= 10) return 'thick jacket or wool coat, layered warm outfit, chilly weather';
     if (tempC <= 15) return 'light jacket or cardigan, long sleeve shirt, mild cool weather outfit';
     if (tempC <= 20) return 'light jacket or hoodie, casual long sleeve, comfortable mild weather outfit';
@@ -218,24 +288,59 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
     return 'very light summer clothes, sleeveless or tank top, hot weather outfit';
   }
 
-  String _buildWeatherLandscapePrompt(int tempC, String desc) {
+  String _weatherLandscapePrompt(int tempC, String desc) {
     final lower = desc.toLowerCase();
     if (lower.contains('rain') || lower.contains('drizzle') || lower.contains('shower')) {
-      return 'A breathtaking rainy landscape in Korea, lush green hillside glistening with rain, misty mountains in background, dramatic atmospheric photography, cinematic quality';
+      return 'Breathtaking rainy landscape in Korea, lush green hillside glistening with rain, misty mountains, dramatic atmospheric photography, cinematic quality';
     }
-    if (lower.contains('snow') || lower.contains('blizzard') || lower.contains('sleet') || tempC <= 0) {
-      return 'A breathtaking snowy mountain landscape in Korea, pristine white snow covering forests and peaks, serene winter beauty, stunning scenic photography, cinematic quality';
+    if (lower.contains('snow') || lower.contains('blizzard') || tempC <= 0) {
+      return 'Breathtaking snowy mountain landscape in Korea, pristine white snow covering forests and peaks, serene winter beauty, cinematic quality';
     }
-    if (lower.contains('cloud') || lower.contains('overcast') || lower.contains('fog') || lower.contains('mist')) {
-      return 'A dramatic cloudy landscape in Korea, moody sky with rays of light breaking through clouds over rolling hills, atmospheric and stunning nature photography';
+    if (lower.contains('cloud') || lower.contains('overcast') || lower.contains('fog')) {
+      return 'Dramatic cloudy landscape in Korea, moody sky with sunrays breaking through clouds over rolling hills, atmospheric nature photography';
     }
     if (tempC >= 28) {
-      return 'A vibrant hot summer landscape in Korea, bright sunlight over lush green fields, clear blue sky, vivid and energetic summer scenery, cinematic quality';
+      return 'Vibrant hot summer landscape in Korea, bright sunlight over lush green fields, clear blue sky, vivid energetic summer scenery, cinematic quality';
     }
-    return 'A breathtaking sunny landscape in Korea, crystal clear sky, golden sunlight over green mountains and valleys, vibrant and beautiful scenic photography';
+    return 'Breathtaking sunny landscape in Korea, golden sunlight over green mountains and valleys, clear sky, cinematic quality';
   }
 
-  // ── 프리미엄: 유틸 / 상태 ──
+  // ── 프롬프트 빌더 ─────────────────────────────────────
+
+  Future<String> _buildPrompt(ImageCategory category) async {
+    if (category == ImageCategory.landscape) {
+      if (_season == Season.current) {
+        final weather = await _fetchWeather();
+        return weather != null
+            ? _weatherLandscapePrompt(weather.tempC, weather.desc)
+            : Season.spring.landscapePrompt;
+      }
+      return _season.landscapePrompt;
+    }
+
+    final gender = category == ImageCategory.woman ? 'Korean woman' : 'Korean man';
+    String seasonOutfit;
+
+    if (_season == Season.current) {
+      final weather = await _fetchWeather();
+      seasonOutfit = weather != null
+          ? _weatherOutfitHint(weather.tempC)
+          : 'comfortable casual outfit';
+    } else {
+      seasonOutfit = _season.outfitHint;
+    }
+
+    return 'Full body head to toe portrait of a $gender, '
+        '${_ageGroup.prompt(category)}, '
+        'K-pop celebrity-level visual, top idol stunning face, '
+        '${_bodyType.description}, '
+        'wearing ${_styleType.description}, $seasonOutfit, '
+        '${_vibe.prompt(category)}, '
+        'complete outfit visible from head to shoes, shoes clearly visible, '
+        'high quality Korean fashion editorial photography';
+  }
+
+  // ── 프리미엄 ─────────────────────────────────────────
 
   String _todayStr() {
     final n = DateTime.now();
@@ -278,39 +383,30 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
     if (box == null) return;
     final today = _todayStr();
     if (_isSubscribed()) {
-      final newCount = _dailyCount + 1;
-      await box.put('dailyCount', newCount);
+      final n = _dailyCount + 1;
+      await box.put('dailyCount', n);
       await box.put('dailyDate', today);
-      setState(() {
-        _dailyCount = newCount;
-        _dailyDate = today;
-      });
+      setState(() { _dailyCount = n; _dailyDate = today; });
     } else {
-      final newFree = _freeUsed + 1;
-      await box.put('freeUsed', newFree);
-      setState(() => _freeUsed = newFree);
+      final n = _freeUsed + 1;
+      await box.put('freeUsed', n);
+      setState(() => _freeUsed = n);
     }
   }
-
-  // ── 프리미엄: 코드 등록 ──
 
   Future<String?> _redeemCode(String code) async {
     final normalized = code.trim().toUpperCase().replaceAll(RegExp(r'[-\s]'), '');
     if (normalized.isEmpty) return '코드를 입력해주세요';
-
     final used = (_settingsBox?.get('usedCodes') as List?)?.cast<String>() ?? [];
     if (used.contains(normalized)) return '이미 사용된 코드입니다';
-
     try {
       final uri = kIsWeb
           ? Uri.parse('/api/redeem')
           : Uri.parse('https://web-tau-nine-22.vercel.app/api/redeem');
       final res = await http
-          .post(
-            uri,
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'code': normalized}),
-          )
+          .post(uri,
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'code': normalized}))
           .timeout(const Duration(seconds: 10));
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       if (res.statusCode == 200) {
@@ -319,25 +415,24 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
         await _settingsBox?.put('usedCodes', used);
         await _settingsBox?.put('subExpiry', expiresAt);
         setState(() => _subExpiry = expiresAt);
-        return null; // 성공
+        return null;
       }
       return data['error'] as String? ?? '코드 오류';
-    } catch (e) {
+    } catch (_) {
       return '네트워크 오류';
     }
   }
 
-  // ── 프리미엄: 다이얼로그 ──
+  // ── 다이얼로그 ───────────────────────────────────────
 
   void _showCodeInputDialog({VoidCallback? onActivated}) {
-    final codeCtrl = TextEditingController();
+    final ctrl = TextEditingController();
     bool loading = false;
     String? error;
-
     showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, dialogSetState) => AlertDialog(
+        builder: (ctx, ds) => AlertDialog(
           title: const Text('코드 입력'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -349,54 +444,39 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
                   style: TextStyle(fontSize: 12, color: Colors.grey)),
               const SizedBox(height: 12),
               TextField(
-                controller: codeCtrl,
+                controller: ctrl,
                 decoration: InputDecoration(
                   hintText: 'JOA-XXXX-XXXXXX',
                   border: const OutlineInputBorder(),
                   errorText: error,
                 ),
                 textCapitalization: TextCapitalization.characters,
-                onChanged: (_) => dialogSetState(() => error = null),
+                onChanged: (_) => ds(() => error = null),
               ),
             ],
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('취소'),
-            ),
-            ElevatedButton(
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('취소')),
+            FilledButton(
               onPressed: loading
                   ? null
                   : () async {
-                      dialogSetState(() {
-                        loading = true;
-                        error = null;
-                      });
-                      final err = await _redeemCode(codeCtrl.text);
+                      ds(() { loading = true; error = null; });
+                      final err = await _redeemCode(ctrl.text);
                       if (!mounted) return;
-                      dialogSetState(() {
-                        loading = false;
-                        error = err;
-                      });
+                      ds(() { loading = false; error = err; });
                       if (err == null) {
                         Navigator.pop(ctx);
                         onActivated?.call();
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('구독 활성화 완료! $_subExpiry까지 이용 가능합니다 🎉'),
-                            ),
+                            SnackBar(content: Text('구독 활성화! $_subExpiry까지 이용 가능합니다 🎉')),
                           );
                         }
                       }
                     },
               child: loading
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                   : const Text('확인'),
             ),
           ],
@@ -409,38 +489,28 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('무료 이용권 소진 😮'),
-        content: Column(
+        title: const Text('무료 이용권 소진'),
+        content: const Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
+          children: [
             Text('무료 이미지 5장을 모두 사용했습니다.'),
             SizedBox(height: 8),
-            Text(
-              '월 이용권을 구매하면\n하루 30장씩 한 달간 이용할 수 있습니다.',
-              style: TextStyle(fontSize: 13),
-            ),
+            Text('월 이용권을 구매하면 하루 30장씩\n한 달간 이용할 수 있습니다.',
+                style: TextStyle(fontSize: 13, color: Colors.black87)),
           ],
         ),
         actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('닫기')),
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('닫기'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _showCodeInputDialog();
-            },
+            onPressed: () { Navigator.pop(ctx); _showCodeInputDialog(); },
             child: const Text('코드 입력'),
           ),
-          ElevatedButton(
+          FilledButton(
             onPressed: () async {
               Navigator.pop(ctx);
               final uri = Uri.parse(_storeUrl);
-              if (await canLaunchUrl(uri)) {
-                await launchUrl(uri, mode: LaunchMode.externalApplication);
-              }
+              if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
             },
             child: const Text('구매하러 가기'),
           ),
@@ -453,15 +523,10 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('오늘 한도 초과 😅'),
-        content: Text(
-          '오늘 이용 한도(${_maxDailyImages}장)에 도달했습니다.\n내일 다시 이용하실 수 있습니다.',
-        ),
+        title: const Text('오늘 한도 초과'),
+        content: Text('오늘 이용 한도(${_maxDailyImages}장)에 도달했습니다.\n내일 다시 이용하실 수 있습니다.'),
         actions: [
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('확인'),
-          ),
+          FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('확인')),
         ],
       ),
     );
@@ -492,118 +557,61 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
                   Text('무료 $_freeUsed / $_maxFreeImages장 사용'),
                 ]),
                 const SizedBox(height: 4),
-                const Text(
-                  '월 이용권 구매 후 코드를 입력하세요',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
+                const Text('월 이용권 구매 후 코드를 입력하세요',
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
               ],
               const Divider(height: 24),
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _showCodeInputDialog();
-                },
+              FilledButton.icon(
+                onPressed: () { Navigator.pop(ctx); _showCodeInputDialog(); },
                 icon: const Icon(Icons.vpn_key, size: 18),
                 label: const Text('코드 입력'),
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(42),
-                ),
+                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(42)),
               ),
               const SizedBox(height: 8),
               OutlinedButton.icon(
                 onPressed: () async {
                   Navigator.pop(ctx);
                   final uri = Uri.parse(_storeUrl);
-                  if (await canLaunchUrl(uri)) {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
-                  }
+                  if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
                 },
                 icon: const Icon(Icons.shopping_cart_outlined, size: 18),
                 label: const Text('스마트스토어에서 구매'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(42),
-                ),
+                style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(42)),
               ),
             ],
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('닫기'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('닫기')),
           ],
         ),
       ),
     );
   }
 
-  // ── 생성 버튼 핸들러 ──
+  // ── 이미지 생성 ──────────────────────────────────────
 
   void _onCategoryTapped(ImageCategory category) {
     if (_isLoading) return;
+    setState(() => _lastCategory = category);
     if (_isSubscribed()) {
-      if (_dailyCount >= _maxDailyImages) {
-        _showDailyLimitDialog();
-        return;
-      }
+      if (_dailyCount >= _maxDailyImages) { _showDailyLimitDialog(); return; }
     } else {
-      if (_freeUsed >= _maxFreeImages) {
-        _showPaywallDialog();
-        return;
-      }
+      if (_freeUsed >= _maxFreeImages) { _showPaywallDialog(); return; }
     }
-    _requestImage(category);
+    _generateImage(category);
   }
 
-  // ── 이미지 생성 ──
-
-  Future<void> _requestImage(ImageCategory category) async {
+  Future<void> _generateImage(ImageCategory category) async {
     if (!kIsWeb && _geminiApiKey.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('GEMINI_API_KEY가 설정되지 않았습니다.')),
       );
       return;
     }
-
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+    setState(() { _isLoading = true; _errorMessage = null; });
 
     try {
-      String prompt;
-
-      if (category == ImageCategory.landscape) {
-        if (_useWeather) {
-          final weather = await _fetchWeather();
-          prompt = weather != null
-              ? _buildWeatherLandscapePrompt(weather.tempC, weather.desc)
-              : _prompts[category]![_random.nextInt(_prompts[category]!.length)];
-        } else {
-          final prompts = _prompts[category]!;
-          prompt = prompts[_random.nextInt(prompts.length)];
-        }
-      } else {
-        final isWoman = category == ImageCategory.woman;
-        final prompts = _prompts[category]!;
-        prompt = prompts[_random.nextInt(prompts.length)];
-        final gender = isWoman
-            ? 'Korean woman with K-pop idol-like beauty'
-            : 'Korean man with K-pop idol-like visuals';
-        if (_useWeather) {
-          final weather = await _fetchWeather();
-          if (weather != null) {
-            final outfit = _weatherOutfitHint(weather.tempC);
-            prompt = 'Full body head to toe shot of a $gender, full figure from head to feet, '
-                'wearing $outfit, stylish Korean street fashion, '
-                'clothes and shoes clearly visible, ${_selectedBodyType.description}';
-          } else {
-            prompt = '$prompt, ${_selectedBodyType.description}';
-          }
-        } else {
-          prompt = '$prompt, ${_selectedBodyType.description}';
-        }
-      }
+      final prompt = await _buildPrompt(category);
 
       final http.Response response;
       if (kIsWeb) {
@@ -614,20 +622,11 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
         );
       } else {
         response = await http.post(
-          Uri.parse(
-              'https://generativelanguage.googleapis.com/v1beta/models/$_geminiModel:generateContent?key=$_geminiApiKey'),
+          Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/$_geminiModel:generateContent?key=$_geminiApiKey'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
-            'contents': [
-              {
-                'parts': [
-                  {'text': '$prompt, vertical 9:16 portrait aspect ratio'}
-                ]
-              }
-            ],
-            'generationConfig': {
-              'responseModalities': ['IMAGE']
-            },
+            'contents': [{'parts': [{'text': '$prompt, vertical 9:16 portrait aspect ratio'}]}],
+            'generationConfig': {'responseModalities': ['IMAGE']},
           }),
         );
       }
@@ -643,49 +642,37 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
         b64 = (data.first as Map<String, dynamic>)['b64_json'] as String;
       } else {
         final candidates = responseJson['candidates'] as List;
-        final parts =
-            (candidates.first as Map<String, dynamic>)['content']['parts']
-                as List;
-        final imagePart =
-            parts.firstWhere((p) => (p as Map)['inlineData'] != null)
-                as Map<String, dynamic>;
+        final parts = (candidates.first as Map<String, dynamic>)['content']['parts'] as List;
+        final imagePart = parts.firstWhere((p) => (p as Map)['inlineData'] != null) as Map<String, dynamic>;
         b64 = imagePart['inlineData']['data'] as String;
       }
 
       final filename = '${DateTime.now().millisecondsSinceEpoch}.png';
-      final historyItem = _HistoryItem.fromBytes(base64Decode(b64), filename);
-
+      final item = _HistoryItem.fromBytes(base64Decode(b64), filename);
       setState(() {
-        _currentImage = historyItem;
-        _history.insert(0, historyItem);
+        _currentImage = item;
+        _history.insert(0, item);
       });
-      await _saveToBox(historyItem);
-      await _incrementUsage(); // 사용량 증가
-    } catch (error) {
-      setState(() {
-        _errorMessage = error.toString();
-      });
+      await _saveToBox(item);
+      await _incrementUsage();
+    } catch (e) {
+      setState(() => _errorMessage = e.toString());
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _downloadImage(_HistoryItem item) async {
-    final error =
-        await saveImageToDevice(item.bytes, item.imageUrl, item.filename);
+    final error = await saveImageToDevice(item.bytes, item.imageUrl, item.filename);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(error == null ? '저장했습니다.' : '저장 실패: $error')),
+        SnackBar(content: Text(error == null ? '저장했습니다.' : '저장 실패: $error')),
       );
     }
   }
 
   void _showThumbnailMenu(int index) {
     final item = _history[index];
-
     showModalBottomSheet<void>(
       context: context,
       builder: (ctx) => SafeArea(
@@ -693,17 +680,13 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.download),
+              leading: const Icon(Icons.download_rounded),
               title: const Text('다운로드'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _downloadImage(item);
-              },
+              onTap: () { Navigator.pop(ctx); _downloadImage(item); },
             ),
             ListTile(
-              leading: const Icon(Icons.delete, color: Colors.red),
-              title:
-                  const Text('삭제', style: TextStyle(color: Colors.red)),
+              leading: const Icon(Icons.delete_rounded, color: Colors.red),
+              title: const Text('삭제', style: TextStyle(color: Colors.red)),
               onTap: () {
                 Navigator.pop(ctx);
                 _deleteFromBox(item.filename);
@@ -719,254 +702,337 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
     );
   }
 
+  // ── UI 컴포넌트 ──────────────────────────────────────
+
+  Widget _buildChip({required String label, required bool selected, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        margin: const EdgeInsets.only(right: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? Colors.indigo : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? Colors.indigo : Colors.grey.shade300,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            color: selected ? Colors.white : Colors.grey.shade700,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOptionRow<T>(
+    String label,
+    List<T> values,
+    T current,
+    void Function(T) onSelect,
+    String Function(T) labelOf,
+  ) {
+    return SizedBox(
+      height: 34,
+      child: Row(
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 16),
+            child: SizedBox(
+              width: 38,
+              child: Text(label,
+                  style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey.shade500,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: -0.3)),
+            ),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.only(right: 12),
+              child: Row(
+                children: values
+                    .map((v) => _buildChip(
+                          label: labelOf(v),
+                          selected: v == current,
+                          onTap: () => setState(() => onSelect(v)),
+                        ))
+                    .toList(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSeasonRow() {
+    return SizedBox(
+      height: 34,
+      child: Row(
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 16),
+            child: SizedBox(
+              width: 38,
+              child: Text('계절',
+                  style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey.shade500,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: -0.3)),
+            ),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.only(right: 12),
+              child: Row(
+                children: Season.values.map((s) {
+                  final label = s == Season.current && _currentTempC != null
+                      ? '${s.emoji} ${_currentTempC}°C'
+                      : '${s.emoji} ${s.label}';
+                  return _buildChip(
+                    label: label,
+                    selected: _season == s,
+                    onTap: () => setState(() => _season = s),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── 빌드 ─────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     final subscribed = _isSubscribed();
+    final isPerson = _lastCategory != ImageCategory.landscape;
+
     return Scaffold(
+      backgroundColor: const Color(0xFFF4F4F6),
       appBar: AppBar(
         centerTitle: false,
         toolbarHeight: 46,
-        title: const Text('JoA',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-        backgroundColor: Theme.of(context).colorScheme.surface,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
+        title: const Text('JoA',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20, letterSpacing: -0.5)),
         actions: [
-          TextButton.icon(
-            onPressed: _showSettingsDialog,
-            icon: Icon(
-              subscribed ? Icons.verified_outlined : Icons.lock_outline,
-              size: 16,
-              color: subscribed ? Colors.green : Colors.orange,
-            ),
-            label: Text(
-              subscribed
-                  ? '오늘 $_dailyCount/$_maxDailyImages'
-                  : '무료 $_freeUsed/$_maxFreeImages',
-              style: TextStyle(
-                fontSize: 12,
-                color: subscribed ? Colors.green : Colors.orange,
+          GestureDetector(
+            onTap: _showSettingsDialog,
+            child: Container(
+              margin: const EdgeInsets.only(right: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: subscribed
+                    ? Colors.green.shade50
+                    : Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: subscribed ? Colors.green.shade200 : Colors.orange.shade200,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    subscribed ? Icons.verified_outlined : Icons.lock_outline,
+                    size: 13,
+                    color: subscribed ? Colors.green.shade700 : Colors.orange.shade700,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    subscribed
+                        ? '$_dailyCount/$_maxDailyImages'
+                        : '$_freeUsed/$_maxFreeImages',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: subscribed ? Colors.green.shade700 : Colors.orange.shade700,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
           IconButton(
             icon: const Icon(Icons.settings_outlined, size: 20),
             onPressed: _showSettingsDialog,
-            tooltip: '설정',
+            color: Colors.grey.shade600,
           ),
         ],
       ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-              child: Row(
-                children: [
-                  ...ImageCategory.values.map((category) {
-                    return Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 3),
-                        child: ElevatedButton(
-                          onPressed: () => _onCategoryTapped(category),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: category.color,
-                            foregroundColor: Colors.white,
-                            disabledBackgroundColor:
-                                category.color.withValues(alpha: 0.4),
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+      body: Column(
+        children: [
+          // ── 메인 이미지 ──
+          Expanded(
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _errorMessage != null
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Text(_errorMessage!,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                          ),
+                        )
+                      : _currentImage == null
+                          ? Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.auto_awesome_rounded,
+                                      size: 52, color: Colors.grey.shade300),
+                                  const SizedBox(height: 12),
+                                  Text('아래 버튼을 눌러 이미지를 생성하세요',
+                                      style: TextStyle(
+                                          fontSize: 13, color: Colors.grey.shade400)),
+                                ],
+                              ),
+                            )
+                          : Stack(
+                              children: [
+                                InteractiveViewer(
+                                  minScale: 1.0,
+                                  maxScale: 5.0,
+                                  child: SizedBox.expand(
+                                    child: _currentImage!.buildImage(fit: BoxFit.cover),
+                                  ),
+                                ),
+                                Positioned(
+                                  right: 10,
+                                  bottom: 10,
+                                  child: FloatingActionButton.small(
+                                    heroTag: 'download',
+                                    onPressed: () => _downloadImage(_currentImage!),
+                                    backgroundColor: Colors.black45,
+                                    foregroundColor: Colors.white,
+                                    elevation: 0,
+                                    child: const Icon(Icons.download_rounded, size: 20),
+                                  ),
+                                ),
+                              ],
                             ),
-                            elevation: 2,
+            ),
+          ),
+
+          // ── 썸네일 ──
+          if (_history.isNotEmpty)
+            SizedBox(
+              height: 74,
+              child: ListView.builder(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                scrollDirection: Axis.horizontal,
+                itemCount: _history.length,
+                itemBuilder: (context, index) {
+                  final item = _history[index];
+                  final isSelected = item == _currentImage;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: GestureDetector(
+                      onTap: () => setState(() => _currentImage = item),
+                      onLongPress: () => _showThumbnailMenu(index),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(9),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 120),
+                          decoration: isSelected
+                              ? BoxDecoration(
+                                  border: Border.all(color: Colors.indigo, width: 2),
+                                  borderRadius: BorderRadius.circular(9),
+                                )
+                              : null,
+                          child: AspectRatio(
+                            aspectRatio: 9 / 16,
+                            child: item.buildImage(fit: BoxFit.cover),
                           ),
-                          child: Text(
-                            '${category.emoji}\n${category.label}',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ),
-                    );
-                  }),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 3),
-                      child: ElevatedButton(
-                        onPressed: () => setState(() {
-                          _useWeather = !_useWeather;
-                          if (!_useWeather) _weatherInfo = null;
-                        }),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _useWeather
-                              ? const Color(0xFF00BCD4)
-                              : Colors.grey.shade400,
-                          foregroundColor: Colors.white,
-                          padding:
-                              const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: 2,
-                        ),
-                        child: Text(
-                          _useWeather && _weatherInfo != null
-                              ? '🌤\n$_weatherInfo'
-                              : '🌤\n날씨코디',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                              fontSize: 13, fontWeight: FontWeight.bold),
                         ),
                       ),
                     ),
-                  ),
+                  );
+                },
+              ),
+            ),
+
+          // ── 옵션 패널 ──
+          Container(
+            color: Colors.white,
+            margin: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (isPerson) ...[
+                  _buildOptionRow('나이대', AgeGroup.values, _ageGroup,
+                      (v) => _ageGroup = v, (v) => v.label),
+                  _buildOptionRow('체형', BodyType.values, _bodyType,
+                      (v) => _bodyType = v, (v) => v.label),
+                  _buildOptionRow('스타일', StyleType.values, _styleType,
+                      (v) => _styleType = v, (v) => v.label),
                 ],
-              ),
+                _buildSeasonRow(),
+                if (isPerson)
+                  _buildOptionRow('분위기', Vibe.values, _vibe,
+                      (v) => _vibe = v, (v) => v.label),
+              ],
             ),
-            const SizedBox(height: 8),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Row(
-                children: [
-                  const Text('체형',
-                      style:
-                          TextStyle(fontSize: 12, color: Colors.grey)),
-                  const SizedBox(width: 8),
-                  ...BodyType.values.map((type) => Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: GestureDetector(
-                          onTap: () =>
-                              setState(() => _selectedBodyType = type),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: _selectedBodyType == type
-                                  ? Colors.indigo
-                                  : Colors.grey.shade200,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              type.label,
-                              style: TextStyle(
-                                color: _selectedBodyType == type
-                                    ? Colors.white
-                                    : Colors.black87,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
+          ),
+
+          // ── 생성 버튼 ──
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+            child: Row(
+              children: ImageCategory.values.map((cat) {
+                final isLast = _lastCategory == cat;
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 3),
+                    child: FilledButton(
+                      onPressed: () => _onCategoryTapped(cat),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: isLast ? cat.color : cat.color.withValues(alpha: 0.55),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
                         ),
-                      )),
-                  const SizedBox(width: 12),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _errorMessage != null
-                        ? Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Center(
-                              child: Text(
-                                _errorMessage!,
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          )
-                        : _currentImage == null
-                            ? const Center(
-                                child: Text(
-                                  '위 버튼을 누르면\n기분 좋아지는 이미지가 나타납니다 ✨',
-                                  textAlign: TextAlign.center,
-                                ),
-                              )
-                            : Stack(
-                                children: [
-                                  InteractiveViewer(
-                                    minScale: 1.0,
-                                    maxScale: 5.0,
-                                    child: SizedBox.expand(
-                                      child: _currentImage!
-                                          .buildImage(fit: BoxFit.cover),
-                                    ),
-                                  ),
-                                  Positioned(
-                                    right: 8,
-                                    bottom: 8,
-                                    child: FloatingActionButton.small(
-                                      heroTag: 'download',
-                                      onPressed: () =>
-                                          _downloadImage(_currentImage!),
-                                      backgroundColor: Colors.black54,
-                                      foregroundColor: Colors.white,
-                                      child: const Icon(Icons.download),
-                                    ),
-                                  ),
-                                ],
-                              ),
-              ),
-            ),
-            if (_history.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 80,
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _history.length,
-                  itemBuilder: (context, index) {
-                    final item = _history[index];
-                    final isSelected = item == _currentImage;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: GestureDetector(
-                        onTap: () => setState(() => _currentImage = item),
-                        onLongPress: () => _showThumbnailMenu(index),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            decoration: isSelected
-                                ? BoxDecoration(
-                                    border: Border.all(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .primary,
-                                      width: 2,
-                                    ),
-                                    borderRadius: BorderRadius.circular(8),
-                                  )
-                                : null,
-                            child: AspectRatio(
-                              aspectRatio: 9 / 16,
-                              child: item.buildImage(fit: BoxFit.cover),
-                            ),
-                          ),
-                        ),
+                        elevation: isLast ? 2 : 0,
                       ),
-                    );
-                  },
-                ),
-              ),
-            ],
-            const SizedBox(height: 12),
-          ],
-        ),
+                      child: Text(
+                        '${cat.emoji} ${cat.label}',
+                        style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
       ),
     );
   }
