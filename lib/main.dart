@@ -7,7 +7,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
-import 'package:mobile_scanner/mobile_scanner.dart';
+import 'qr_scanner_view.dart';
 
 import 'download_helper.dart';
 
@@ -1256,32 +1256,29 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ),
                 ),
-                if (!kIsWeb) ...[
-                  const SizedBox(width: 8),
-                  // QR 스캔 버튼 (앱 전용)
-                  GestureDetector(
-                    onTap: () async {
-                      final result = await Navigator.push<String>(
-                        context,
-                        MaterialPageRoute(builder: (_) => const QrScanPage()),
-                      );
-                      if (result != null && result.isNotEmpty) {
-                        setState(() => _keyCtrl.text = result);
-                        await _saveKey();
-                      }
-                    },
-                    child: Container(
-                      width: 48, height: 48,
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.blue.shade200),
-                      ),
-                      child: Icon(Icons.qr_code_scanner_rounded,
-                          color: Colors.blue.shade600, size: 22),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () async {
+                    final result = await Navigator.push<String>(
+                      context,
+                      MaterialPageRoute(builder: (_) => const QrScanPage()),
+                    );
+                    if (result != null && result.isNotEmpty) {
+                      setState(() => _keyCtrl.text = result);
+                      await _saveKey();
+                    }
+                  },
+                  child: Container(
+                    width: 48, height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.blue.shade200),
                     ),
+                    child: Icon(Icons.qr_code_scanner_rounded,
+                        color: Colors.blue.shade600, size: 22),
                   ),
-                ],
+                ),
               ]),
               const SizedBox(height: 10),
               Row(children: [
@@ -1502,15 +1499,9 @@ class _QrScanPageState extends State<QrScanPage> {
         foregroundColor: Colors.white,
         title: const Text('QR 코드 스캔',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.flash_on_rounded, color: Colors.white),
-            onPressed: () => _ctrl.toggleTorch(),
-          ),
-        ],
       ),
       body: Stack(children: [
-        MobileScanner(
+        QrScannerView(
           controller: _ctrl,
           onDetect: (capture) {
             if (_scanned) return;
@@ -1520,6 +1511,7 @@ class _QrScanPageState extends State<QrScanPage> {
               Navigator.pop(context, value);
             }
           },
+          onDetectError: (e, st) {},
         ),
         Center(
           child: Container(
