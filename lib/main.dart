@@ -704,110 +704,74 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
 
   // ── UI 컴포넌트 ──────────────────────────────────────
 
-  Widget _buildChip({required String label, required bool selected, required VoidCallback onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        margin: const EdgeInsets.only(right: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected ? Colors.indigo : Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: selected ? Colors.indigo : Colors.grey.shade300,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-            color: selected ? Colors.white : Colors.grey.shade700,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildOptionRow<T>(
-    String label,
+  Widget _buildDropdown<T>(
     List<T> values,
     T current,
     void Function(T) onSelect,
     String Function(T) labelOf,
   ) {
-    return SizedBox(
-      height: 34,
-      child: Row(
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 16),
-            child: SizedBox(
-              width: 38,
-              child: Text(label,
-                  style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.grey.shade500,
-                      fontWeight: FontWeight.w500,
-                      letterSpacing: -0.3)),
-            ),
-          ),
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.only(right: 12),
-              child: Row(
-                children: values
-                    .map((v) => _buildChip(
-                          label: labelOf(v),
-                          selected: v == current,
-                          onTap: () => setState(() => onSelect(v)),
-                        ))
-                    .toList(),
-              ),
-            ),
-          ),
-        ],
+    return PopupMenuButton<T>(
+      onSelected: (v) => setState(() => onSelect(v)),
+      itemBuilder: (ctx) => values
+          .map((v) => PopupMenuItem<T>(
+                value: v,
+                child: Row(children: [
+                  SizedBox(
+                    width: 20,
+                    child: v == current
+                        ? const Icon(Icons.check_rounded, size: 15, color: Colors.indigo)
+                        : null,
+                  ),
+                  Text(labelOf(v), style: const TextStyle(fontSize: 14)),
+                ]),
+              ))
+          .toList(),
+      child: _dropdownPill(labelOf(current)),
+    );
+  }
+
+  Widget _buildSeasonDropdown() {
+    return PopupMenuButton<Season>(
+      onSelected: (v) => setState(() => _season = v),
+      itemBuilder: (ctx) => Season.values
+          .map((s) => PopupMenuItem<Season>(
+                value: s,
+                child: Row(children: [
+                  SizedBox(
+                    width: 20,
+                    child: s == _season
+                        ? const Icon(Icons.check_rounded, size: 15, color: Colors.indigo)
+                        : null,
+                  ),
+                  Text('${s.emoji} ${s.label}', style: const TextStyle(fontSize: 14)),
+                ]),
+              ))
+          .toList(),
+      child: _dropdownPill(
+        _season == Season.current && _currentTempC != null
+            ? '${_season.emoji} $_currentTempC°C'
+            : '${_season.emoji} ${_season.label}',
       ),
     );
   }
 
-  Widget _buildSeasonRow() {
-    return SizedBox(
-      height: 34,
+  Widget _dropdownPill(String label) {
+    return Container(
+      margin: const EdgeInsets.only(right: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 16),
-            child: SizedBox(
-              width: 38,
-              child: Text('계절',
-                  style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.grey.shade500,
-                      fontWeight: FontWeight.w500,
-                      letterSpacing: -0.3)),
-            ),
-          ),
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.only(right: 12),
-              child: Row(
-                children: Season.values.map((s) {
-                  final label = s == Season.current && _currentTempC != null
-                      ? '${s.emoji} ${_currentTempC}°C'
-                      : '${s.emoji} ${s.label}';
-                  return _buildChip(
-                    label: label,
-                    selected: _season == s,
-                    onTap: () => setState(() => _season = s),
-                  );
-                }).toList(),
-              ),
-            ),
-          ),
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w500, color: Colors.black87)),
+          const SizedBox(width: 2),
+          Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Colors.grey.shade500),
         ],
       ),
     );
@@ -837,35 +801,28 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
               margin: const EdgeInsets.only(right: 4),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                color: subscribed
-                    ? Colors.green.shade50
-                    : Colors.orange.shade50,
+                color: subscribed ? Colors.green.shade50 : Colors.orange.shade50,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: subscribed ? Colors.green.shade200 : Colors.orange.shade200,
                 ),
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    subscribed ? Icons.verified_outlined : Icons.lock_outline,
-                    size: 13,
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(
+                  subscribed ? Icons.verified_outlined : Icons.lock_outline,
+                  size: 13,
+                  color: subscribed ? Colors.green.shade700 : Colors.orange.shade700,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  subscribed ? '$_dailyCount/$_maxDailyImages' : '$_freeUsed/$_maxFreeImages',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
                     color: subscribed ? Colors.green.shade700 : Colors.orange.shade700,
                   ),
-                  const SizedBox(width: 4),
-                  Text(
-                    subscribed
-                        ? '$_dailyCount/$_maxDailyImages'
-                        : '$_freeUsed/$_maxFreeImages',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: subscribed ? Colors.green.shade700 : Colors.orange.shade700,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ]),
             ),
           ),
           IconButton(
@@ -877,13 +834,48 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
       ),
       body: Column(
         children: [
+
+          // ── 카테고리 버튼 (상단) ──
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+            child: Row(
+              children: ImageCategory.values.map((cat) {
+                final isSelected = _lastCategory == cat;
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 3),
+                    child: FilledButton(
+                      onPressed: () => _onCategoryTapped(cat),
+                      style: FilledButton.styleFrom(
+                        backgroundColor:
+                            isSelected ? cat.color : cat.color.withValues(alpha: 0.15),
+                        foregroundColor: isSelected ? Colors.white : cat.color,
+                        padding: const EdgeInsets.symmetric(vertical: 11),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text('${cat.emoji} ${cat.label}',
+                          style: TextStyle(
+                              fontSize: 14,
+                              fontWeight:
+                                  isSelected ? FontWeight.w700 : FontWeight.w500)),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+
           // ── 메인 이미지 ──
           Expanded(
             child: Container(
-              margin: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+              margin: const EdgeInsets.fromLTRB(12, 0, 12, 0),
               decoration: BoxDecoration(
                 color: Colors.grey.shade200,
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(16),
               ),
               clipBehavior: Clip.antiAlias,
               child: _isLoading
@@ -894,46 +886,42 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
                             padding: const EdgeInsets.all(20),
                             child: Text(_errorMessage!,
                                 textAlign: TextAlign.center,
-                                style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                                style: TextStyle(
+                                    fontSize: 13, color: Colors.grey.shade600)),
                           ),
                         )
                       : _currentImage == null
                           ? Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.auto_awesome_rounded,
-                                      size: 52, color: Colors.grey.shade300),
-                                  const SizedBox(height: 12),
-                                  Text('아래 버튼을 눌러 이미지를 생성하세요',
-                                      style: TextStyle(
-                                          fontSize: 13, color: Colors.grey.shade400)),
-                                ],
-                              ),
+                              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                                Icon(Icons.auto_awesome_rounded,
+                                    size: 52, color: Colors.grey.shade300),
+                                const SizedBox(height: 10),
+                                Text('위 버튼을 눌러 이미지를 생성하세요',
+                                    style: TextStyle(
+                                        fontSize: 13, color: Colors.grey.shade400)),
+                              ]),
                             )
-                          : Stack(
-                              children: [
-                                InteractiveViewer(
-                                  minScale: 1.0,
-                                  maxScale: 5.0,
-                                  child: SizedBox.expand(
-                                    child: _currentImage!.buildImage(fit: BoxFit.cover),
-                                  ),
+                          : Stack(children: [
+                              InteractiveViewer(
+                                minScale: 1.0,
+                                maxScale: 5.0,
+                                child: SizedBox.expand(
+                                  child: _currentImage!.buildImage(fit: BoxFit.cover),
                                 ),
-                                Positioned(
-                                  right: 10,
-                                  bottom: 10,
-                                  child: FloatingActionButton.small(
-                                    heroTag: 'download',
-                                    onPressed: () => _downloadImage(_currentImage!),
-                                    backgroundColor: Colors.black45,
-                                    foregroundColor: Colors.white,
-                                    elevation: 0,
-                                    child: const Icon(Icons.download_rounded, size: 20),
-                                  ),
+                              ),
+                              Positioned(
+                                right: 10,
+                                bottom: 10,
+                                child: FloatingActionButton.small(
+                                  heroTag: 'download',
+                                  onPressed: () => _downloadImage(_currentImage!),
+                                  backgroundColor: Colors.black45,
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  child: const Icon(Icons.download_rounded, size: 20),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ]),
             ),
           ),
 
@@ -954,13 +942,13 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
                       onTap: () => setState(() => _currentImage = item),
                       onLongPress: () => _showThumbnailMenu(index),
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(9),
+                        borderRadius: BorderRadius.circular(8),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 120),
                           decoration: isSelected
                               ? BoxDecoration(
                                   border: Border.all(color: Colors.indigo, width: 2),
-                                  borderRadius: BorderRadius.circular(9),
+                                  borderRadius: BorderRadius.circular(8),
                                 )
                               : null,
                           child: AspectRatio(
@@ -975,61 +963,30 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
               ),
             ),
 
-          // ── 옵션 패널 ──
+          // ── 옵션 바 (드롭다운) ──
           Container(
             color: Colors.white,
-            margin: const EdgeInsets.only(top: 8),
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (isPerson) ...[
-                  _buildOptionRow('나이대', AgeGroup.values, _ageGroup,
-                      (v) => _ageGroup = v, (v) => v.label),
-                  _buildOptionRow('체형', BodyType.values, _bodyType,
-                      (v) => _bodyType = v, (v) => v.label),
-                  _buildOptionRow('스타일', StyleType.values, _styleType,
-                      (v) => _styleType = v, (v) => v.label),
+            margin: const EdgeInsets.only(top: 6),
+            padding: const EdgeInsets.fromLTRB(12, 8, 0, 12),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  if (isPerson) ...[
+                    _buildDropdown(AgeGroup.values, _ageGroup,
+                        (v) => _ageGroup = v, (v) => v.label),
+                    _buildDropdown(BodyType.values, _bodyType,
+                        (v) => _bodyType = v, (v) => v.label),
+                    _buildDropdown(StyleType.values, _styleType,
+                        (v) => _styleType = v, (v) => v.label),
+                  ],
+                  _buildSeasonDropdown(),
+                  if (isPerson)
+                    _buildDropdown(
+                        Vibe.values, _vibe, (v) => _vibe = v, (v) => v.label),
+                  const SizedBox(width: 12),
                 ],
-                _buildSeasonRow(),
-                if (isPerson)
-                  _buildOptionRow('분위기', Vibe.values, _vibe,
-                      (v) => _vibe = v, (v) => v.label),
-              ],
-            ),
-          ),
-
-          // ── 생성 버튼 ──
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
-            child: Row(
-              children: ImageCategory.values.map((cat) {
-                final isLast = _lastCategory == cat;
-                return Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 3),
-                    child: FilledButton(
-                      onPressed: () => _onCategoryTapped(cat),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: isLast ? cat.color : cat.color.withValues(alpha: 0.55),
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        elevation: isLast ? 2 : 0,
-                      ),
-                      child: Text(
-                        '${cat.emoji} ${cat.label}',
-                        style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white),
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
+              ),
             ),
           ),
         ],
