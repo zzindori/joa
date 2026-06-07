@@ -1350,10 +1350,11 @@ class _SettingsPageState extends State<SettingsPage> {
             children: [
               TextField(
                 controller: _codeCtrl,
+                enabled: !_isSubscribed,
                 textCapitalization: TextCapitalization.characters,
                 style: const TextStyle(fontSize: 13, letterSpacing: 1),
                 decoration: InputDecoration(
-                  hintText: 'JOA-XXXX-XXXXXX',
+                  hintText: _isSubscribed ? '구독 중입니다' : 'JOA-XXXX-XXXXXX',
                   hintStyle: TextStyle(color: Colors.grey.shade400, letterSpacing: 0),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1363,26 +1364,36 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               const SizedBox(height: 10),
               FilledButton(
-                onPressed: _codeLoading ? null : _redeemCode,
+                onPressed: (_codeLoading || _isSubscribed) ? null : _redeemCode,
                 style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(44),
+                    backgroundColor: _isSubscribed ? Colors.green : null,
+                    disabledBackgroundColor: _isSubscribed ? Colors.green : null,
+                    disabledForegroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10))),
                 child: _codeLoading
                     ? const SizedBox(width: 18, height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text('코드 등록'),
+                    : _isSubscribed
+                        ? const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            Icon(Icons.check_rounded, size: 16, color: Colors.white),
+                            SizedBox(width: 6),
+                            Text('구독 중'),
+                          ])
+                        : const Text('코드 등록'),
               ),
               const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: widget.onStoreOpen,
-                icon: const Icon(Icons.shopping_cart_outlined, size: 16),
-                label: const Text('스마트스토어에서 구매'),
-                style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(44),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10))),
-              ),
+              if (!_isSubscribed)
+                OutlinedButton.icon(
+                  onPressed: widget.onStoreOpen,
+                  icon: const Icon(Icons.shopping_cart_outlined, size: 16),
+                  label: const Text('스마트스토어에서 구매'),
+                  style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(44),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10))),
+                ),
             ],
           ),
 
