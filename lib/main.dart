@@ -1256,30 +1256,32 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                // QR 스캔 버튼
-                GestureDetector(
-                  onTap: () async {
-                    final result = await Navigator.push<String>(
-                      context,
-                      MaterialPageRoute(builder: (_) => const QrScanPage()),
-                    );
-                    if (result != null && result.isNotEmpty) {
-                      setState(() => _keyCtrl.text = result);
-                      await _saveKey();
-                    }
-                  },
-                  child: Container(
-                    width: 48, height: 48,
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.blue.shade200),
+                if (!kIsWeb) ...[
+                  const SizedBox(width: 8),
+                  // QR 스캔 버튼 (앱 전용)
+                  GestureDetector(
+                    onTap: () async {
+                      final result = await Navigator.push<String>(
+                        context,
+                        MaterialPageRoute(builder: (_) => const QrScanPage()),
+                      );
+                      if (result != null && result.isNotEmpty) {
+                        setState(() => _keyCtrl.text = result);
+                        await _saveKey();
+                      }
+                    },
+                    child: Container(
+                      width: 48, height: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.blue.shade200),
+                      ),
+                      child: Icon(Icons.qr_code_scanner_rounded,
+                          color: Colors.blue.shade600, size: 22),
                     ),
-                    child: Icon(Icons.qr_code_scanner_rounded,
-                        color: Colors.blue.shade600, size: 22),
                   ),
-                ),
+                ],
               ]),
               const SizedBox(height: 10),
               Row(children: [
