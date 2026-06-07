@@ -593,6 +593,15 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
   void _onCategoryTapped(ImageCategory category) {
     if (_isLoading) return;
     setState(() => _lastCategory = category);
+    _checkAndGenerate(category);
+  }
+
+  void _onGenerateTapped() {
+    if (_isLoading) return;
+    _checkAndGenerate(_lastCategory);
+  }
+
+  void _checkAndGenerate(ImageCategory category) {
     if (_isSubscribed()) {
       if (_dailyCount >= _maxDailyImages) { _showDailyLimitDialog(); return; }
     } else {
@@ -783,17 +792,20 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
   Widget build(BuildContext context) {
     final subscribed = _isSubscribed();
     final isPerson = _lastCategory != ImageCategory.landscape;
+    final seasonLabel = _season == Season.current && _currentTempC != null
+        ? '${_season.emoji} $_currentTempC°C'
+        : '${_season.emoji} ${_season.label}';
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F4F6),
+      backgroundColor: const Color(0xFFF0F0F3),
       appBar: AppBar(
         centerTitle: false,
         toolbarHeight: 46,
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xFFF0F0F3),
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         title: const Text('JoA',
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20, letterSpacing: -0.5)),
+            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22, letterSpacing: -1)),
         actions: [
           GestureDetector(
             onTap: _showSettingsDialog,
@@ -804,23 +816,19 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
                 color: subscribed ? Colors.green.shade50 : Colors.orange.shade50,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: subscribed ? Colors.green.shade200 : Colors.orange.shade200,
-                ),
+                    color: subscribed ? Colors.green.shade200 : Colors.orange.shade200),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(
-                  subscribed ? Icons.verified_outlined : Icons.lock_outline,
-                  size: 13,
-                  color: subscribed ? Colors.green.shade700 : Colors.orange.shade700,
-                ),
+                Icon(subscribed ? Icons.verified_outlined : Icons.lock_outline,
+                    size: 13,
+                    color: subscribed ? Colors.green.shade700 : Colors.orange.shade700),
                 const SizedBox(width: 4),
                 Text(
                   subscribed ? '$_dailyCount/$_maxDailyImages' : '$_freeUsed/$_maxFreeImages',
                   style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: subscribed ? Colors.green.shade700 : Colors.orange.shade700,
-                  ),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: subscribed ? Colors.green.shade700 : Colors.orange.shade700),
                 ),
               ]),
             ),
@@ -832,37 +840,43 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
           ),
         ],
       ),
-      body: Column(
-        children: [
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
 
-          // ── 상단 바: 카테고리 + 계절 ──
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-            child: Row(
-              children: [
+            // ── 카드 1: 카테고리 + 계절 ──
+            Container(
+              margin: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1C1C2E),
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.18),
+                      blurRadius: 10, offset: const Offset(0, 3)),
+                ],
+              ),
+              child: Row(children: [
                 ...ImageCategory.values.map((cat) {
                   final isSelected = _lastCategory == cat;
                   return Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: FilledButton(
-                        onPressed: () => _onCategoryTapped(cat),
-                        style: FilledButton.styleFrom(
-                          backgroundColor:
-                              isSelected ? cat.color : cat.color.withValues(alpha: 0.13),
-                          foregroundColor: isSelected ? Colors.white : cat.color,
-                          padding: const EdgeInsets.symmetric(vertical: 11),
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
+                    child: GestureDetector(
+                      onTap: () => _onCategoryTapped(cat),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        margin: const EdgeInsets.only(right: 4),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          color: isSelected ? cat.color : Colors.transparent,
+                          borderRadius: BorderRadius.circular(13),
                         ),
                         child: Text('${cat.emoji} ${cat.label}',
+                            textAlign: TextAlign.center,
                             style: TextStyle(
                                 fontSize: 13,
-                                fontWeight:
-                                    isSelected ? FontWeight.w700 : FontWeight.w500)),
+                                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+                                color: isSelected ? Colors.white : Colors.white54)),
                       ),
                     ),
                   );
@@ -875,160 +889,195 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
                             value: s,
                             child: Row(children: [
                               SizedBox(
-                                width: 20,
-                                child: s == _season
-                                    ? const Icon(Icons.check_rounded,
-                                        size: 15, color: Colors.indigo)
-                                    : null,
-                              ),
-                              Text('${s.emoji} ${s.label}',
-                                  style: const TextStyle(fontSize: 14)),
+                                  width: 20,
+                                  child: s == _season
+                                      ? const Icon(Icons.check_rounded,
+                                          size: 15, color: Colors.indigo)
+                                      : null),
+                              Text('${s.emoji} ${s.label}'),
                             ]),
                           ))
                       .toList(),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade300),
+                      color: Colors.white.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(13),
                     ),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Text(
-                        _season == Season.current && _currentTempC != null
-                            ? '${_season.emoji}$_currentTempC°'
-                            : '${_season.emoji} ${_season.label}',
-                        style: const TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w500),
-                      ),
+                      Text(seasonLabel,
+                          style: const TextStyle(
+                              fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w500)),
                       const SizedBox(width: 2),
-                      Icon(Icons.keyboard_arrow_down_rounded,
-                          size: 15, color: Colors.grey.shade500),
+                      const Icon(Icons.keyboard_arrow_down_rounded,
+                          size: 14, color: Colors.white38),
                     ]),
                   ),
                 ),
-              ],
+              ]),
             ),
-          ),
 
-          // ── 옵션 바: 인물 옵션 ──
-          if (isPerson)
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.fromLTRB(12, 6, 0, 10),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(children: [
-                  _buildDropdown(AgeGroup.values, _ageGroup,
-                      (v) => _ageGroup = v, (v) => v.label),
-                  _buildDropdown(BodyType.values, _bodyType,
-                      (v) => _bodyType = v, (v) => v.label),
-                  _buildDropdown(StyleType.values, _styleType,
-                      (v) => _styleType = v, (v) => v.label),
-                  _buildDropdown(
-                      Vibe.values, _vibe, (v) => _vibe = v, (v) => v.label),
-                  const SizedBox(width: 12),
-                ]),
-              ),
-            )
-          else
+            // ── 카드 2: 인물 옵션 + 생성 버튼 ──
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              child: isPerson
+                  ? Container(
+                      margin: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+                      padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withValues(alpha: 0.07),
+                              blurRadius: 8, offset: const Offset(0, 2)),
+                        ],
+                      ),
+                      child: Row(children: [
+                        Expanded(
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(children: [
+                              _buildDropdown(AgeGroup.values, _ageGroup,
+                                  (v) => _ageGroup = v, (v) => v.label),
+                              _buildDropdown(BodyType.values, _bodyType,
+                                  (v) => _bodyType = v, (v) => v.label),
+                              _buildDropdown(StyleType.values, _styleType,
+                                  (v) => _styleType = v, (v) => v.label),
+                              _buildDropdown(Vibe.values, _vibe,
+                                  (v) => _vibe = v, (v) => v.label),
+                            ]),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        // 생성 버튼
+                        GestureDetector(
+                          onTap: _onGenerateTapped,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 100),
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                            decoration: BoxDecoration(
+                              color: _isLoading
+                                  ? Colors.grey.shade300
+                                  : _lastCategory.color,
+                              borderRadius: BorderRadius.circular(13),
+                            ),
+                            child: _isLoading
+                                ? SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.grey.shade500))
+                                : const Icon(Icons.auto_awesome_rounded,
+                                    color: Colors.white, size: 18),
+                          ),
+                        ),
+                      ]),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+
             const SizedBox(height: 8),
 
-          // ── 메인 이미지 ──
-          Expanded(
-            child: Container(
-              margin: const EdgeInsets.fromLTRB(12, 0, 12, 0),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade200,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _errorMessage != null
-                      ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(20),
-                            child: Text(_errorMessage!,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                    fontSize: 13, color: Colors.grey.shade600)),
-                          ),
-                        )
-                      : _currentImage == null
-                          ? Center(
-                              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                                Icon(Icons.auto_awesome_rounded,
-                                    size: 52, color: Colors.grey.shade300),
-                                const SizedBox(height: 10),
-                                Text('위 버튼을 눌러 이미지를 생성하세요',
-                                    style: TextStyle(
-                                        fontSize: 13, color: Colors.grey.shade400)),
+            // ── 메인 이미지 ──
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade200,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 8, offset: const Offset(0, 2)),
+                  ],
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _errorMessage != null
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(20),
+                              child: Text(_errorMessage!,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                      fontSize: 13, color: Colors.grey.shade600)),
+                            ),
+                          )
+                        : _currentImage == null
+                            ? Center(
+                                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                                  Icon(Icons.auto_awesome_rounded,
+                                      size: 52, color: Colors.grey.shade300),
+                                  const SizedBox(height: 10),
+                                  Text('위에서 카테고리를 선택하세요',
+                                      style: TextStyle(
+                                          fontSize: 13, color: Colors.grey.shade400)),
+                                ]),
+                              )
+                            : Stack(children: [
+                                InteractiveViewer(
+                                  minScale: 1.0,
+                                  maxScale: 5.0,
+                                  child: SizedBox.expand(
+                                    child: _currentImage!.buildImage(fit: BoxFit.cover),
+                                  ),
+                                ),
+                                Positioned(
+                                  right: 10,
+                                  bottom: 10,
+                                  child: FloatingActionButton.small(
+                                    heroTag: 'download',
+                                    onPressed: () => _downloadImage(_currentImage!),
+                                    backgroundColor: Colors.black45,
+                                    foregroundColor: Colors.white,
+                                    elevation: 0,
+                                    child: const Icon(Icons.download_rounded, size: 20),
+                                  ),
+                                ),
                               ]),
-                            )
-                          : Stack(children: [
-                              InteractiveViewer(
-                                minScale: 1.0,
-                                maxScale: 5.0,
-                                child: SizedBox.expand(
-                                  child: _currentImage!.buildImage(fit: BoxFit.cover),
-                                ),
-                              ),
-                              Positioned(
-                                right: 10,
-                                bottom: 10,
-                                child: FloatingActionButton.small(
-                                  heroTag: 'download',
-                                  onPressed: () => _downloadImage(_currentImage!),
-                                  backgroundColor: Colors.black45,
-                                  foregroundColor: Colors.white,
-                                  elevation: 0,
-                                  child: const Icon(Icons.download_rounded, size: 20),
-                                ),
-                              ),
-                            ]),
+              ),
             ),
-          ),
 
-          // ── 썸네일 ──
-          if (_history.isNotEmpty)
-            SizedBox(
-              height: 74,
-              child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                scrollDirection: Axis.horizontal,
-                itemCount: _history.length,
-                itemBuilder: (context, index) {
-                  final item = _history[index];
-                  final isSelected = item == _currentImage;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: GestureDetector(
-                      onTap: () => setState(() => _currentImage = item),
-                      onLongPress: () => _showThumbnailMenu(index),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 120),
-                          decoration: isSelected
-                              ? BoxDecoration(
-                                  border: Border.all(color: Colors.indigo, width: 2),
-                                  borderRadius: BorderRadius.circular(8),
-                                )
-                              : null,
-                          child: AspectRatio(
-                            aspectRatio: 9 / 16,
-                            child: item.buildImage(fit: BoxFit.cover),
+            // ── 썸네일 ──
+            if (_history.isNotEmpty)
+              SizedBox(
+                height: 74,
+                child: ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _history.length,
+                  itemBuilder: (context, index) {
+                    final item = _history[index];
+                    final isSelected = item == _currentImage;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: GestureDetector(
+                        onTap: () => setState(() => _currentImage = item),
+                        onLongPress: () => _showThumbnailMenu(index),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 120),
+                            decoration: isSelected
+                                ? BoxDecoration(
+                                    border: Border.all(color: Colors.indigo, width: 2),
+                                    borderRadius: BorderRadius.circular(8))
+                                : null,
+                            child: AspectRatio(
+                              aspectRatio: 9 / 16,
+                              child: item.buildImage(fit: BoxFit.cover),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
-            ),
 
-        ],
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }
