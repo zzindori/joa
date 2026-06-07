@@ -212,6 +212,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
   Box? _settingsBox;
   int _freeUsed = 0;
   String? _subExpiry;
+  String? _subCode;
   int _dailyCount = 0;
   String _dailyDate = '';
   String? _userApiKey;
@@ -364,6 +365,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
       setState(() {
         _freeUsed = box.get('freeUsed', defaultValue: 0) as int;
         _subExpiry = box.get('subExpiry') as String?;
+        _subCode = box.get('subCode') as String?;
         _dailyDate = today;
         _dailyCount = storedDate == today ? storedCount : 0;
         _userApiKey = box.get('userApiKey') as String?;
@@ -416,7 +418,8 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
         used.add(normalized);
         await _settingsBox?.put('usedCodes', used);
         await _settingsBox?.put('subExpiry', expiresAt);
-        setState(() => _subExpiry = expiresAt);
+        await _settingsBox?.put('subCode', normalized);
+        setState(() { _subExpiry = expiresAt; _subCode = normalized; });
         return null;
       }
       return data['error'] as String? ?? '코드 오류';
@@ -652,7 +655,11 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
 
       final body = <String, dynamic>{'prompt': prompt};
       final userKey = _userApiKey;
-      if (userKey != null && userKey.isNotEmpty) body['apiKey'] = userKey;
+      if (userKey != null && userKey.isNotEmpty) {
+        body['apiKey'] = userKey;
+      } else if (_subCode != null && _subCode!.isNotEmpty) {
+        body['subCode'] = _subCode;
+      }
 
       final response = await http.post(
         uri,

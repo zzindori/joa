@@ -1,5 +1,7 @@
 import crypto from 'crypto';
 
+const VM_URL = 'http://152.67.208.156:3000';
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -14,10 +16,7 @@ export default async function handler(req, res) {
   const secret = process.env.CODE_SECRET;
   if (!secret) return res.status(500).json({ error: '서버 설정 오류' });
 
-  // Normalize: remove dashes/spaces, uppercase
   const normalized = code.trim().toUpperCase().replace(/[-\s]/g, '');
-
-  // Format: JOA + 4-digit index + 6-char hex = JOA0001ABCDEF (13 chars)
   const match = normalized.match(/^JOA(\d{4})([A-F0-9]{6})$/);
   if (!match) return res.status(400).json({ error: '유효하지 않은 코드 형식입니다' });
 
@@ -33,11 +32,15 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: '유효하지 않은 코드입니다' });
   }
 
-  const expiresAt = new Date();
-  expiresAt.setMonth(expiresAt.getMonth() + 1);
-
-  return res.status(200).json({
-    success: true,
-    expiresAt: expiresAt.toISOString().split('T')[0],
-  });
+  try {
+    const vmRes = await fetch(`${VM_URL}/redeem`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-vm-secret': process.env.VM_SECRET },
+      body: JSON.stringify({ code: normalized }),
+    });
+    const data = await vmRes.json();
+    return res.status(200).json({ success: true, expiresAt: data.expiresAt });
+  } catch (e) {
+    return res.status(500).json({ error: '서버 오류: ' + e.message });
+  }
 }
