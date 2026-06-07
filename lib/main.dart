@@ -835,39 +835,104 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
       body: Column(
         children: [
 
-          // ── 카테고리 버튼 (상단) ──
+          // ── 상단 바: 카테고리 + 계절 ──
           Container(
             color: Colors.white,
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
             child: Row(
-              children: ImageCategory.values.map((cat) {
-                final isSelected = _lastCategory == cat;
-                return Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 3),
-                    child: FilledButton(
-                      onPressed: () => _onCategoryTapped(cat),
-                      style: FilledButton.styleFrom(
-                        backgroundColor:
-                            isSelected ? cat.color : cat.color.withValues(alpha: 0.15),
-                        foregroundColor: isSelected ? Colors.white : cat.color,
-                        padding: const EdgeInsets.symmetric(vertical: 11),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+              children: [
+                ...ImageCategory.values.map((cat) {
+                  final isSelected = _lastCategory == cat;
+                  return Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: FilledButton(
+                        onPressed: () => _onCategoryTapped(cat),
+                        style: FilledButton.styleFrom(
+                          backgroundColor:
+                              isSelected ? cat.color : cat.color.withValues(alpha: 0.13),
+                          foregroundColor: isSelected ? Colors.white : cat.color,
+                          padding: const EdgeInsets.symmetric(vertical: 11),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
+                        child: Text('${cat.emoji} ${cat.label}',
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight:
+                                    isSelected ? FontWeight.w700 : FontWeight.w500)),
                       ),
-                      child: Text('${cat.emoji} ${cat.label}',
-                          style: TextStyle(
-                              fontSize: 14,
-                              fontWeight:
-                                  isSelected ? FontWeight.w700 : FontWeight.w500)),
                     ),
+                  );
+                }),
+                // 계절 드롭다운
+                PopupMenuButton<Season>(
+                  onSelected: (v) => setState(() => _season = v),
+                  itemBuilder: (ctx) => Season.values
+                      .map((s) => PopupMenuItem<Season>(
+                            value: s,
+                            child: Row(children: [
+                              SizedBox(
+                                width: 20,
+                                child: s == _season
+                                    ? const Icon(Icons.check_rounded,
+                                        size: 15, color: Colors.indigo)
+                                    : null,
+                              ),
+                              Text('${s.emoji} ${s.label}',
+                                  style: const TextStyle(fontSize: 14)),
+                            ]),
+                          ))
+                      .toList(),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Text(
+                        _season == Season.current && _currentTempC != null
+                            ? '${_season.emoji}$_currentTempC°'
+                            : '${_season.emoji} ${_season.label}',
+                        style: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(width: 2),
+                      Icon(Icons.keyboard_arrow_down_rounded,
+                          size: 15, color: Colors.grey.shade500),
+                    ]),
                   ),
-                );
-              }).toList(),
+                ),
+              ],
             ),
           ),
+
+          // ── 옵션 바: 인물 옵션 ──
+          if (isPerson)
+            Container(
+              color: Colors.white,
+              padding: const EdgeInsets.fromLTRB(12, 6, 0, 10),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(children: [
+                  _buildDropdown(AgeGroup.values, _ageGroup,
+                      (v) => _ageGroup = v, (v) => v.label),
+                  _buildDropdown(BodyType.values, _bodyType,
+                      (v) => _bodyType = v, (v) => v.label),
+                  _buildDropdown(StyleType.values, _styleType,
+                      (v) => _styleType = v, (v) => v.label),
+                  _buildDropdown(
+                      Vibe.values, _vibe, (v) => _vibe = v, (v) => v.label),
+                  const SizedBox(width: 12),
+                ]),
+              ),
+            )
+          else
+            const SizedBox(height: 8),
 
           // ── 메인 이미지 ──
           Expanded(
@@ -963,32 +1028,6 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
               ),
             ),
 
-          // ── 옵션 바 (드롭다운) ──
-          Container(
-            color: Colors.white,
-            margin: const EdgeInsets.only(top: 6),
-            padding: const EdgeInsets.fromLTRB(12, 8, 0, 12),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  if (isPerson) ...[
-                    _buildDropdown(AgeGroup.values, _ageGroup,
-                        (v) => _ageGroup = v, (v) => v.label),
-                    _buildDropdown(BodyType.values, _bodyType,
-                        (v) => _bodyType = v, (v) => v.label),
-                    _buildDropdown(StyleType.values, _styleType,
-                        (v) => _styleType = v, (v) => v.label),
-                  ],
-                  _buildSeasonDropdown(),
-                  if (isPerson)
-                    _buildDropdown(
-                        Vibe.values, _vibe, (v) => _vibe = v, (v) => v.label),
-                  const SizedBox(width: 12),
-                ],
-              ),
-            ),
-          ),
         ],
       ),
     );
