@@ -15,7 +15,7 @@ const _geminiModel = 'gemini-2.5-flash-image';
 
 // ── 프리미엄 설정 ──
 const _maxFreeImages = 5;
-const _maxDailyImages = 10;
+const _maxDailyImages = 30;
 const _storeUrl = 'https://smartstore.naver.com/wowhit'; // 이용권 상품 페이지
 
 enum ImageCategory {
@@ -417,7 +417,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
             Text('무료 이미지 5장을 모두 사용했습니다.'),
             SizedBox(height: 8),
             Text(
-              '월 이용권을 구매하면\n하루 10장씩 한 달간 이용할 수 있습니다.',
+              '월 이용권을 구매하면\n하루 30장씩 한 달간 이용할 수 있습니다.',
               style: TextStyle(fontSize: 13),
             ),
           ],
