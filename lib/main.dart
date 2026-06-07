@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -8,13 +7,14 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:mobile_scanner/mobile_scanner.dart';
+
 import 'download_helper.dart';
 
-const _geminiApiKey = String.fromEnvironment('GEMINI_API_KEY');
 const _geminiModel = 'gemini-2.5-flash-image';
 const _maxFreeImages = 5;
 const _maxDailyImages = 30;
-const _storeUrl = 'https://smartstore.naver.com/wowhit';
+const _storeUrl = 'https://smartstore.naver.com/wowhit/products/13625209650';
 
 // ── 카테고리 ──────────────────────────────────────────
 
@@ -214,6 +214,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
   String? _subExpiry;
   int _dailyCount = 0;
   String _dailyDate = '';
+  String? _userApiKey;
 
   @override
   void initState() {
@@ -365,6 +366,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
         _subExpiry = box.get('subExpiry') as String?;
         _dailyDate = today;
         _dailyCount = storedDate == today ? storedCount : 0;
+        _userApiKey = box.get('userApiKey') as String?;
       });
     }
   }
@@ -532,6 +534,30 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
     );
   }
 
+  void _openSettings() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => SettingsPage(
+          settingsBox: _settingsBox,
+          isSubscribed: _isSubscribed(),
+          subExpiry: _subExpiry,
+          freeUsed: _freeUsed,
+          dailyCount: _dailyCount,
+          userApiKey: _userApiKey,
+          onRedeemCode: _redeemCode,
+          onStoreOpen: () async {
+            final uri = Uri.parse(_storeUrl);
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            }
+          },
+        ),
+      ),
+    );
+    _loadSettings();
+  }
+
   void _showSettingsDialog() {
     showDialog<void>(
       context: context,
@@ -593,7 +619,6 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
   void _onCategoryTapped(ImageCategory category) {
     if (_isLoading) return;
     setState(() => _lastCategory = category);
-    _checkAndGenerate(category);
   }
 
   void _onGenerateTapped() {
@@ -602,6 +627,11 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
   }
 
   void _checkAndGenerate(ImageCategory category) {
+    // 사용자 API 키가 있으면 한도 무시
+    if (_userApiKey != null && _userApiKey!.isNotEmpty) {
+      _generateImage(category);
+      return;
+    }
     if (_isSubscribed()) {
       if (_dailyCount >= _maxDailyImages) { _showDailyLimitDialog(); return; }
     } else {
@@ -611,50 +641,32 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
   }
 
   Future<void> _generateImage(ImageCategory category) async {
-    if (!kIsWeb && _geminiApiKey.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('GEMINI_API_KEY가 설정되지 않았습니다.')),
-      );
-      return;
-    }
     setState(() { _isLoading = true; _errorMessage = null; });
 
     try {
       final prompt = await _buildPrompt(category);
 
-      final http.Response response;
-      if (kIsWeb) {
-        response = await http.post(
-          Uri.parse('/api/image'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'prompt': prompt}),
-        );
-      } else {
-        response = await http.post(
-          Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/$_geminiModel:generateContent?key=$_geminiApiKey'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'contents': [{'parts': [{'text': '$prompt, vertical 9:16 portrait aspect ratio'}]}],
-            'generationConfig': {'responseModalities': ['IMAGE']},
-          }),
-        );
-      }
+      final uri = kIsWeb
+          ? Uri.parse('/api/image')
+          : Uri.parse('https://web-tau-nine-22.vercel.app/api/image');
+
+      final body = <String, dynamic>{'prompt': prompt};
+      final userKey = _userApiKey;
+      if (userKey != null && userKey.isNotEmpty) body['apiKey'] = userKey;
+
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception('API 오류(${response.statusCode}): ${response.body}');
       }
 
       final responseJson = jsonDecode(response.body) as Map<String, dynamic>;
-      final String b64;
-      if (kIsWeb) {
-        final data = responseJson['data'] as List;
-        b64 = (data.first as Map<String, dynamic>)['b64_json'] as String;
-      } else {
-        final candidates = responseJson['candidates'] as List;
-        final parts = (candidates.first as Map<String, dynamic>)['content']['parts'] as List;
-        final imagePart = parts.firstWhere((p) => (p as Map)['inlineData'] != null) as Map<String, dynamic>;
-        b64 = imagePart['inlineData']['data'] as String;
-      }
+      final data = responseJson['data'] as List;
+      final b64 = (data.first as Map<String, dynamic>)['b64_json'] as String;
 
       final filename = '${DateTime.now().millisecondsSinceEpoch}.png';
       final item = _HistoryItem.fromBytes(base64Decode(b64), filename);
@@ -663,7 +675,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
         _history.insert(0, item);
       });
       await _saveToBox(item);
-      await _incrementUsage();
+      if (userKey == null || userKey.isEmpty) await _incrementUsage();
     } catch (e) {
       setState(() => _errorMessage = e.toString());
     } finally {
@@ -808,34 +820,48 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
             style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22, letterSpacing: -1)),
         actions: [
           GestureDetector(
-            onTap: _showSettingsDialog,
+            onTap: _openSettings,
             child: Container(
               margin: const EdgeInsets.only(right: 4),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                color: subscribed ? Colors.green.shade50 : Colors.orange.shade50,
+                color: (_userApiKey?.isNotEmpty == true)
+                    ? Colors.blue.shade50
+                    : subscribed ? Colors.green.shade50 : Colors.orange.shade50,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                    color: subscribed ? Colors.green.shade200 : Colors.orange.shade200),
+                    color: (_userApiKey?.isNotEmpty == true)
+                        ? Colors.blue.shade200
+                        : subscribed ? Colors.green.shade200 : Colors.orange.shade200),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(subscribed ? Icons.verified_outlined : Icons.lock_outline,
-                    size: 13,
-                    color: subscribed ? Colors.green.shade700 : Colors.orange.shade700),
+                Icon(
+                  (_userApiKey?.isNotEmpty == true)
+                      ? Icons.key_rounded
+                      : subscribed ? Icons.verified_outlined : Icons.lock_outline,
+                  size: 13,
+                  color: (_userApiKey?.isNotEmpty == true)
+                      ? Colors.blue.shade700
+                      : subscribed ? Colors.green.shade700 : Colors.orange.shade700,
+                ),
                 const SizedBox(width: 4),
                 Text(
-                  subscribed ? '$_dailyCount/$_maxDailyImages' : '$_freeUsed/$_maxFreeImages',
+                  (_userApiKey?.isNotEmpty == true)
+                      ? '내 키'
+                      : subscribed ? '$_dailyCount/$_maxDailyImages' : '$_freeUsed/$_maxFreeImages',
                   style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: subscribed ? Colors.green.shade700 : Colors.orange.shade700),
+                      color: (_userApiKey?.isNotEmpty == true)
+                          ? Colors.blue.shade700
+                          : subscribed ? Colors.green.shade700 : Colors.orange.shade700),
                 ),
               ]),
             ),
           ),
           IconButton(
             icon: const Icon(Icons.settings_outlined, size: 20),
-            onPressed: _showSettingsDialog,
+            onPressed: _openSettings,
             color: Colors.grey.shade600,
           ),
         ],
@@ -845,7 +871,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
         child: Column(
           children: [
 
-            // ── 카드 1: 카테고리 + 계절 ──
+            // ── 카드 1: 카테고리 선택 + 계절 ──
             Container(
               margin: const EdgeInsets.fromLTRB(12, 4, 12, 0),
               padding: const EdgeInsets.all(5),
@@ -858,6 +884,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
                 ],
               ),
               child: Row(children: [
+                // 카테고리 그룹
                 ...ImageCategory.values.map((cat) {
                   final isSelected = _lastCategory == cat;
                   return Expanded(
@@ -881,7 +908,13 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
                     ),
                   );
                 }),
-                // 계절 드롭다운
+                // 구분선
+                Container(
+                  width: 1, height: 26,
+                  color: Colors.white.withValues(alpha: 0.12),
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                ),
+                // 계절 드롭다운 (별도 그룹)
                 PopupMenuButton<Season>(
                   onSelected: (v) => setState(() => _season = v),
                   itemBuilder: (ctx) => Season.values
@@ -917,63 +950,60 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
               ]),
             ),
 
-            // ── 카드 2: 인물 옵션 + 생성 버튼 ──
-            AnimatedSize(
-              duration: const Duration(milliseconds: 200),
-              child: isPerson
-                  ? Container(
-                      margin: const EdgeInsets.fromLTRB(12, 6, 12, 0),
-                      padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(18),
-                        boxShadow: [
-                          BoxShadow(color: Colors.black.withValues(alpha: 0.07),
-                              blurRadius: 8, offset: const Offset(0, 2)),
-                        ],
-                      ),
-                      child: Row(children: [
-                        Expanded(
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(children: [
-                              _buildDropdown(AgeGroup.values, _ageGroup,
-                                  (v) => _ageGroup = v, (v) => v.label),
-                              _buildDropdown(BodyType.values, _bodyType,
-                                  (v) => _bodyType = v, (v) => v.label),
-                              _buildDropdown(StyleType.values, _styleType,
-                                  (v) => _styleType = v, (v) => v.label),
-                              _buildDropdown(Vibe.values, _vibe,
-                                  (v) => _vibe = v, (v) => v.label),
-                            ]),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        // 생성 버튼
-                        GestureDetector(
-                          onTap: _onGenerateTapped,
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 100),
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                            decoration: BoxDecoration(
-                              color: _isLoading
-                                  ? Colors.grey.shade300
-                                  : _lastCategory.color,
-                              borderRadius: BorderRadius.circular(13),
-                            ),
-                            child: _isLoading
-                                ? SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2, color: Colors.grey.shade500))
-                                : const Icon(Icons.auto_awesome_rounded,
-                                    color: Colors.white, size: 18),
-                          ),
-                        ),
-                      ]),
-                    )
-                  : const SizedBox.shrink(),
+            // ── 카드 2: 옵션 + 계절 + 생성 버튼 (항상 표시) ──
+            Container(
+              margin: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+              padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.07),
+                      blurRadius: 8, offset: const Offset(0, 2)),
+                ],
+              ),
+              child: Row(children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(children: [
+                      if (isPerson) ...[
+                        _buildDropdown(AgeGroup.values, _ageGroup,
+                            (v) => _ageGroup = v, (v) => v.label),
+                        _buildDropdown(BodyType.values, _bodyType,
+                            (v) => _bodyType = v, (v) => v.label),
+                        _buildDropdown(StyleType.values, _styleType,
+                            (v) => _styleType = v, (v) => v.label),
+                        _buildDropdown(Vibe.values, _vibe,
+                            (v) => _vibe = v, (v) => v.label),
+                      ],
+                    ]),
+                  ),
+                ),
+                const SizedBox(width: 2),
+                // 생성 버튼
+                GestureDetector(
+                  onTap: _onGenerateTapped,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 100),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                    decoration: BoxDecoration(
+                      color: _isLoading
+                          ? Colors.grey.shade300
+                          : _lastCategory.color,
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                    child: _isLoading
+                        ? SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.grey.shade500))
+                        : const Icon(Icons.auto_awesome_rounded,
+                            color: Colors.white, size: 18),
+                  ),
+                ),
+              ]),
             ),
 
             const SizedBox(height: 8),
@@ -1009,7 +1039,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
                                   Icon(Icons.auto_awesome_rounded,
                                       size: 52, color: Colors.grey.shade300),
                                   const SizedBox(height: 10),
-                                  Text('위에서 카테고리를 선택하세요',
+                                  Text('✨ 버튼을 눌러 생성하세요',
                                       style: TextStyle(
                                           fontSize: 13, color: Colors.grey.shade400)),
                                 ]),
@@ -1079,6 +1109,418 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ── 설정 페이지 ───────────────────────────────────────
+
+class SettingsPage extends StatefulWidget {
+  final Box? settingsBox;
+  final bool isSubscribed;
+  final String? subExpiry;
+  final int freeUsed;
+  final int dailyCount;
+  final String? userApiKey;
+  final Future<String?> Function(String) onRedeemCode;
+  final Future<void> Function() onStoreOpen;
+
+  const SettingsPage({
+    super.key,
+    required this.settingsBox,
+    required this.isSubscribed,
+    required this.subExpiry,
+    required this.freeUsed,
+    required this.dailyCount,
+    required this.userApiKey,
+    required this.onRedeemCode,
+    required this.onStoreOpen,
+  });
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  late TextEditingController _keyCtrl;
+  bool _obscure = true;
+  bool _keySaved = false;
+  String? _savedKey;
+  bool _isSubscribed = false;
+  String? _subExpiry;
+  int _freeUsed = 0;
+  int _dailyCount = 0;
+
+  // 코드 입력 상태
+  final _codeCtrl = TextEditingController();
+  bool _codeLoading = false;
+  String? _codeError;
+
+  @override
+  void initState() {
+    super.initState();
+    _savedKey = widget.userApiKey;
+    _keyCtrl = TextEditingController(text: _savedKey ?? '');
+    _isSubscribed = widget.isSubscribed;
+    _subExpiry = widget.subExpiry;
+    _freeUsed = widget.freeUsed;
+    _dailyCount = widget.dailyCount;
+  }
+
+  @override
+  void dispose() {
+    _keyCtrl.dispose();
+    _codeCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveKey() async {
+    final key = _keyCtrl.text.trim();
+    await widget.settingsBox?.put('userApiKey', key.isEmpty ? null : key);
+    if (!mounted) return;
+    setState(() {
+      _savedKey = key.isEmpty ? null : key;
+      _keySaved = true;
+    });
+    await Future.delayed(const Duration(seconds: 2));
+    if (mounted) setState(() => _keySaved = false);
+  }
+
+  Future<void> _redeemCode() async {
+    setState(() { _codeLoading = true; _codeError = null; });
+    final err = await widget.onRedeemCode(_codeCtrl.text);
+    if (!mounted) return;
+    if (err == null) {
+      _codeCtrl.clear();
+      final expiry = widget.settingsBox?.get('subExpiry') as String?;
+      setState(() {
+        _isSubscribed = true;
+        _subExpiry = expiry;
+        _codeLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('구독 활성화! $_subExpiry까지 이용 가능합니다 🎉')),
+      );
+    } else {
+      setState(() { _codeLoading = false; _codeError = err; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasKey = _savedKey != null && _savedKey!.isNotEmpty;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF0F0F3),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFF0F0F3),
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        title: const Text('설정',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+
+          // ── 내 API 키 ──
+          _sectionCard(
+            icon: Icons.key_rounded,
+            iconColor: Colors.blue,
+            title: '내 Gemini API 키',
+            subtitle: '직접 발급한 키를 입력하면 무제한 사용\n(사용료는 본인 Google 계정 과금)',
+            children: [
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(
+                  child: TextField(
+                    controller: _keyCtrl,
+                    obscureText: _obscure,
+                    style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
+                    decoration: InputDecoration(
+                      hintText: 'AIzaSy...',
+                      hintStyle: TextStyle(color: Colors.grey.shade400),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      suffixIcon: IconButton(
+                        icon: Icon(_obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                            size: 18),
+                        onPressed: () => setState(() => _obscure = !_obscure),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // QR 스캔 버튼
+                GestureDetector(
+                  onTap: () async {
+                    final result = await Navigator.push<String>(
+                      context,
+                      MaterialPageRoute(builder: (_) => const QrScanPage()),
+                    );
+                    if (result != null && result.isNotEmpty) {
+                      setState(() => _keyCtrl.text = result);
+                      await _saveKey();
+                    }
+                  },
+                  child: Container(
+                    width: 48, height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: Icon(Icons.qr_code_scanner_rounded,
+                        color: Colors.blue.shade600, size: 22),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 10),
+              Row(children: [
+                if (hasKey)
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        _keyCtrl.clear();
+                        _saveKey();
+                      },
+                      style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red,
+                          side: const BorderSide(color: Colors.red),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10))),
+                      child: const Text('삭제'),
+                    ),
+                  ),
+                if (hasKey) const SizedBox(width: 8),
+                Expanded(
+                  flex: 2,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    child: FilledButton(
+                      onPressed: _keySaved ? null : _saveKey,
+                      style: FilledButton.styleFrom(
+                          backgroundColor: _keySaved ? Colors.green : Colors.blue,
+                          disabledBackgroundColor: Colors.green,
+                          disabledForegroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10))),
+                      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        if (_keySaved) ...[
+                          const Icon(Icons.check_rounded, size: 16, color: Colors.white),
+                          const SizedBox(width: 4),
+                          const Text('저장됨'),
+                        ] else
+                          const Text('저장'),
+                      ]),
+                    ),
+                  ),
+                ),
+              ]),
+              if (hasKey)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(children: [
+                    Icon(Icons.check_circle_rounded, size: 14, color: Colors.blue.shade600),
+                    const SizedBox(width: 4),
+                    Text('내 키 사용 중 · 한도 없음',
+                        style: TextStyle(fontSize: 12, color: Colors.blue.shade600,
+                            fontWeight: FontWeight.w500)),
+                  ]),
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          // ── 이용권 ──
+          _sectionCard(
+            icon: _isSubscribed ? Icons.verified_rounded : Icons.lock_outline_rounded,
+            iconColor: _isSubscribed ? Colors.green : Colors.orange,
+            title: '이용권',
+            subtitle: _isSubscribed
+                ? '구독 중 · $_subExpiry까지'
+                : '무료 $_freeUsed/$_maxFreeImages장 사용',
+            children: [
+              TextField(
+                controller: _codeCtrl,
+                textCapitalization: TextCapitalization.characters,
+                style: const TextStyle(fontSize: 13, letterSpacing: 1),
+                decoration: InputDecoration(
+                  hintText: 'JOA-XXXX-XXXXXX',
+                  hintStyle: TextStyle(color: Colors.grey.shade400, letterSpacing: 0),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  errorText: _codeError,
+                ),
+                onChanged: (_) => setState(() => _codeError = null),
+              ),
+              const SizedBox(height: 10),
+              FilledButton(
+                onPressed: _codeLoading ? null : _redeemCode,
+                style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(44),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10))),
+                child: _codeLoading
+                    ? const SizedBox(width: 18, height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('코드 등록'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: widget.onStoreOpen,
+                icon: const Icon(Icons.shopping_cart_outlined, size: 16),
+                label: const Text('스마트스토어에서 구매'),
+                style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(44),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10))),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          // ── 사용 통계 ──
+          _sectionCard(
+            icon: Icons.bar_chart_rounded,
+            iconColor: Colors.indigo,
+            title: '사용 통계',
+            children: [
+              _statRow('무료 사용', '$_freeUsed / $_maxFreeImages 장'),
+              if (_isSubscribed)
+                _statRow('오늘 사용', '$_dailyCount / $_maxDailyImages 장'),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionCard({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    String? subtitle,
+    required List<Widget> children,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 8, offset: const Offset(0, 2)),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 16, color: iconColor),
+            ),
+            const SizedBox(width: 10),
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+              if (subtitle != null)
+                Text(subtitle,
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+            ]),
+          ]),
+          const SizedBox(height: 14),
+          ...children,
+        ]),
+      ),
+    );
+  }
+
+  Widget _statRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Text(label, style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+        Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+      ]),
+    );
+  }
+}
+
+// ── QR 스캐너 페이지 ──────────────────────────────────
+
+class QrScanPage extends StatefulWidget {
+  const QrScanPage({super.key});
+
+  @override
+  State<QrScanPage> createState() => _QrScanPageState();
+}
+
+class _QrScanPageState extends State<QrScanPage> {
+  final MobileScannerController _ctrl = MobileScannerController();
+  bool _scanned = false;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: const Text('QR 코드 스캔',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.flash_on_rounded, color: Colors.white),
+            onPressed: () => _ctrl.toggleTorch(),
+          ),
+        ],
+      ),
+      body: Stack(children: [
+        MobileScanner(
+          controller: _ctrl,
+          onDetect: (capture) {
+            if (_scanned) return;
+            final value = capture.barcodes.first.rawValue;
+            if (value != null && value.isNotEmpty) {
+              _scanned = true;
+              Navigator.pop(context, value);
+            }
+          },
+        ),
+        Center(
+          child: Container(
+            width: 240, height: 240,
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.blue.shade400, width: 2),
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+        ),
+        Positioned(
+          bottom: 48,
+          left: 0, right: 0,
+          child: Text(
+            'wowhit 홈페이지에서 생성한\nAPI 키 QR 코드를 스캔하세요',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.8), fontSize: 14),
+          ),
+        ),
+      ]),
     );
   }
 }
