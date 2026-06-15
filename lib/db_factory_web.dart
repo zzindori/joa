@@ -1,10 +1,9 @@
-// ignore: avoid_web_libraries_in_flutter
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
-import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common/sqlite_api.dart';
 
 Future<Database> openJoaDatabase() async {
-  databaseFactory = databaseFactoryFfiWeb;
-  return databaseFactory.openDatabase(
+  final factory = databaseFactoryFfiWeb;
+  return factory.openDatabase(
     'joa_images.db',
     options: OpenDatabaseOptions(
       version: 1,

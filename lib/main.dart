@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -160,15 +161,26 @@ enum SceneType {
 }
 
 enum RefOutfitType {
+  // 일상/거리
   casual('캐주얼 👕', 'wearing casual everyday Korean street style'),
   office('오피스룩 💼', 'wearing smart Korean business casual office wear'),
   street('스트릿 🎒', 'wearing trendy urban Korean street fashion'),
-  dress('드레스 👗', 'wearing an elegant beautiful dress'),
+  // 드레시
+  dress('미디드레스 👗', 'wearing a stylish midi dress, feminine and elegant'),
+  minidress('미니드레스 🩷', 'wearing a chic mini dress, trendy and youthful'),
   formal('포멀 🎩', 'wearing formal sophisticated attire'),
-  sports('스포츠 🏃', 'wearing sporty athletic activewear'),
   hanbok('한복 👘', 'wearing traditional Korean hanbok, colorful and elegant'),
-  swimwear('수영복 👙', 'wearing a stylish swimsuit'),
-  party('파티룩 🎊', 'wearing a glamorous party evening wear');
+  // 파티/이벤트
+  party('파티룩 🎊', 'wearing glamorous party evening wear, sparkly and bold'),
+  cocktail('칵테일드레스 🍸', 'wearing an elegant fitted knee-length cocktail dress'),
+  gown('이브닝가운 ✨', 'wearing a stunning floor-length evening gown, luxurious'),
+  // 스포츠/활동
+  sports('스포츠 🏃', 'wearing sporty athletic activewear'),
+  yoga('요가복 🧘', 'wearing fitted yoga leggings and sports bra, sleek activewear'),
+  // 해변
+  swimwear('수영복 👙', 'wearing fashionable swimwear at the beach'),
+  rashguard('래쉬가드 🏄', 'wearing a rash guard top with swim shorts, sporty beach style'),
+  coverup('커버업 🌊', 'wearing a flowy sheer beach coverup kaftan over swimwear');
 
   const RefOutfitType(this.label, this.prompt);
   final String label;
@@ -186,6 +198,39 @@ enum LightType {
   final String label;
   final String prompt;
 }
+
+enum PoseType {
+  front('정면 전신 🧍', 'full body front-facing pose, looking directly at camera, editorial stance'),
+  daily('일상 포즈 ✨', 'natural relaxed everyday pose fitting the environment, candid mood'),
+  candid('캔디드 📷', 'candid shot as if taken by a passerby, spontaneous natural moment, slightly off-angle'),
+  selfie('진짜 셀카 🤳', 'intimate close-up portrait, subject gazing directly at the viewer, slightly upward shooting angle from arm\'s length, face and upper chest filling most of the frame, casual natural expression, background softly blurred, slight wide-angle lens distortion, informal framing tilted very slightly, viewer feels as if they are the one holding the shot'),
+  mirrorSelfie('거울 셀카 🪞', 'person standing in front of a mirror taking a selfie, phone and arm reflected in mirror, full or upper body visible in reflection, bathroom or bedroom mirror setting');
+
+  const PoseType(this.label, this.prompt);
+  final String label;
+  final String prompt;
+}
+
+const Map<SceneType, List<RefOutfitType>> _sceneOutfitMap = {
+  SceneType.cafe:       [RefOutfitType.casual, RefOutfitType.office, RefOutfitType.street,
+                         RefOutfitType.dress, RefOutfitType.minidress],
+  SceneType.outdoor:    [RefOutfitType.casual, RefOutfitType.street, RefOutfitType.sports,
+                         RefOutfitType.yoga, RefOutfitType.dress, RefOutfitType.minidress, RefOutfitType.hanbok],
+  SceneType.city:       [RefOutfitType.casual, RefOutfitType.office, RefOutfitType.street,
+                         RefOutfitType.dress, RefOutfitType.minidress, RefOutfitType.formal, RefOutfitType.party],
+  SceneType.beach:      [RefOutfitType.swimwear, RefOutfitType.rashguard,
+                         RefOutfitType.coverup, RefOutfitType.casual, RefOutfitType.sports],
+  SceneType.indoor:     [RefOutfitType.casual, RefOutfitType.office, RefOutfitType.street,
+                         RefOutfitType.dress, RefOutfitType.minidress, RefOutfitType.formal, RefOutfitType.hanbok],
+  SceneType.party:      [RefOutfitType.party, RefOutfitType.cocktail, RefOutfitType.gown,
+                         RefOutfitType.dress, RefOutfitType.minidress, RefOutfitType.formal, RefOutfitType.hanbok],
+  SceneType.studio:     RefOutfitType.values,
+  SceneType.gym:        [RefOutfitType.sports, RefOutfitType.yoga, RefOutfitType.casual],
+  SceneType.restaurant: [RefOutfitType.casual, RefOutfitType.office, RefOutfitType.dress,
+                         RefOutfitType.minidress, RefOutfitType.cocktail, RefOutfitType.formal, RefOutfitType.party],
+  SceneType.rooftop:    [RefOutfitType.casual, RefOutfitType.street, RefOutfitType.dress,
+                         RefOutfitType.minidress, RefOutfitType.cocktail, RefOutfitType.party, RefOutfitType.formal],
+};
 
 // ── 히스토리 아이템 ────────────────────────────────────
 
@@ -256,6 +301,15 @@ class ImageRequestPage extends StatefulWidget {
 }
 
 class _ImageRequestPageState extends State<ImageRequestPage> {
+  static const _tips = [
+    (icon: Icons.push_pin_outlined, title: '이어 만들기', body: '마음에 드는 사진을 길게 눌러\n핀으로 고정하고 이어서 생성해보세요'),
+    (icon: Icons.touch_app_outlined, title: '썸네일 길게 누르기', body: '삭제·다운로드·이어 만들기를\n모두 여기서 할 수 있어요'),
+    (icon: Icons.download_outlined, title: '갤러리 저장', body: '메인 이미지 우측 하단 버튼 또는\n썸네일 길게 눌러 저장하세요'),
+    (icon: Icons.photo_library_outlined, title: '히스토리 100장', body: '앱 속도 유지를 위해 최대 100장 보관\n중요한 사진은 갤러리에 저장해두세요'),
+    (icon: Icons.accessibility_new_outlined, title: '체형 옵션', body: '슬림·보통·통통·뚱뚱 옵션으로\n원하는 체형을 선택할 수 있어요'),
+    (icon: Icons.wb_sunny_outlined, title: '날씨 코디', body: '현재 기온을 반영한 착장을\n자동으로 생성해드려요'),
+  ];
+
   // 기본 상태
   bool _isLoading = false;
   String? _errorMessage;
@@ -273,10 +327,16 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
   Vibe _vibe = Vibe.chic;
   int? _currentTempC;
 
+  // 로딩 팁
+  int _tipIndex = 0;
+  Timer? _tipTimer;
+
   // 레퍼런스 모드 옵션
   SceneType _refScene = SceneType.cafe;
   RefOutfitType _refOutfit = RefOutfitType.casual;
   LightType _refLight = LightType.natural;
+  PoseType _refPose = PoseType.front;
+  int _lastRefStep = 0; // 마지막으로 선택한 단계 (0=장면 1=착장 2=포즈 3=조명)
 
   // 프리미엄 상태
   Box? _settingsBox;
@@ -290,11 +350,18 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
   // 생성된 이미지 → 레퍼런스 파일명 매핑
   Map<String, String> _refMap = {};
 
+
   @override
   void initState() {
     super.initState();
     _loadHistory();
     _loadSettings();
+  }
+
+  @override
+  void dispose() {
+    _tipTimer?.cancel();
+    super.dispose();
   }
 
   // ── 히스토리 ────────────────────────────────────────
@@ -346,6 +413,20 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
   Future<void> _deleteFromBox(String filename) async {
     await ImageDB.delete(filename);
   }
+
+  // 묶음 루트 탐색 (부모 체인 따라 올라가기)
+  String _findRoot(String filename) {
+    var current = filename;
+    final visited = <String>{};
+    while (_refMap.containsKey(current) && !visited.contains(current)) {
+      visited.add(current);
+      current = _refMap[current]!;
+    }
+    return current;
+  }
+
+  bool _isInFamily(String filename) =>
+      _refMap.containsKey(filename) || _refMap.containsValue(filename);
 
   // 100장 초과 시 삭제 확인 다이얼로그
   Future<bool> _showDeletionDialog(Map<String, dynamic> oldest) async {
@@ -874,10 +955,16 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
 
   String _buildRefModePrompt() {
     return '${_refScene.prompt}, ${_refOutfit.prompt}, ${_refLight.prompt}, '
+        '${_refPose.prompt}, '
         'high quality Korean fashion editorial photography';
   }
 
   Future<void> _generateImage(ImageCategory? category) async {
+    _tipTimer?.cancel();
+    _tipIndex = 0;
+    _tipTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (mounted) setState(() => _tipIndex = (_tipIndex + 1) % _tips.length);
+    });
     setState(() { _isLoading = true; _errorMessage = null; });
 
     try {
@@ -955,6 +1042,8 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
     } catch (e) {
       setState(() => _errorMessage = e.toString());
     } finally {
+      _tipTimer?.cancel();
+      _tipTimer = null;
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -972,49 +1061,168 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
     }
   }
 
-  // ── 레퍼런스 모드 UI ─────────────────────────────────
+  // ── 로딩 팁 ─────────────────────────────────────────
 
-  Widget _buildRefHeader() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2D1B69),
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.2),
-              blurRadius: 10, offset: const Offset(0, 3)),
+  Widget _buildLoadingTip() {
+    final tip = _tips[_tipIndex];
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(
+            width: 36, height: 36,
+            child: CircularProgressIndicator(
+              strokeWidth: 3,
+              color: Color(0xFF6C3FC4),
+            ),
+          ),
+          const SizedBox(height: 28),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 400),
+            transitionBuilder: (child, anim) =>
+                FadeTransition(opacity: anim, child: child),
+            child: Column(
+              key: ValueKey(_tipIndex),
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(tip.icon, size: 28, color: const Color(0xFF6C3FC4).withValues(alpha: 0.7)),
+                const SizedBox(height: 10),
+                Text(
+                  tip.title,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF6C3FC4),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  tip.body,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.6,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(_tips.length, (i) => AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              width: i == _tipIndex ? 16 : 5,
+              height: 5,
+              decoration: BoxDecoration(
+                color: i == _tipIndex
+                    ? const Color(0xFF6C3FC4)
+                    : Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            )),
+          ),
         ],
       ),
-      child: Row(children: [
-        const Icon(Icons.push_pin, size: 14, color: Colors.white70),
-        const SizedBox(width: 8),
-        const Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('이어 만들기',
-                  style: TextStyle(color: Colors.white,
-                      fontWeight: FontWeight.w700, fontSize: 14)),
-              Text('원본 사진 인물로 새로운 장면을 만듭니다',
-                  style: TextStyle(color: Colors.white54, fontSize: 11)),
-            ],
+    );
+  }
+
+  // ── 레퍼런스 모드 UI ─────────────────────────────────
+
+  Widget _buildFamilyThumbnails() {
+    final rootFn = _findRoot(_refImage!.filename);
+    final family = _history.where((item) => _findRoot(item.filename) == rootFn).toList();
+
+    return SizedBox(
+      height: 80,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            onTap: () => setState(() => _refImage = null),
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(12, 8, 0, 0),
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey.shade400),
+              ),
+              child: const Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.grid_view_rounded, size: 14, color: Colors.grey),
+                  SizedBox(height: 2),
+                  Text('전체', style: TextStyle(fontSize: 9, color: Colors.grey)),
+                ],
+              ),
+            ),
           ),
-        ),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: SizedBox(
-            width: 44, height: 60,
-            child: _refImage!.buildImage(fit: BoxFit.cover),
+          Container(
+            width: 1, height: 50,
+            margin: const EdgeInsets.fromLTRB(8, 15, 0, 0),
+            color: Colors.grey.shade300,
           ),
-        ),
-        const SizedBox(width: 8),
-        GestureDetector(
-          onTap: () => setState(() => _refImage = null),
-          child: const Icon(Icons.close, color: Colors.white54, size: 20),
-        ),
-      ]),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.fromLTRB(8, 8, 12, 0),
+              scrollDirection: Axis.horizontal,
+              itemCount: family.length,
+              itemBuilder: (ctx, i) {
+                final item = family[i];
+                final histIndex = _history.indexOf(item);
+                final isSelected = item == _currentImage;
+                final isRef = item == _refImage;
+                final isRoot = !_refMap.containsKey(item.filename);
+                return Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: GestureDetector(
+                    onTap: () => setState(() => _currentImage = item),
+                    onLongPress: () {
+                      setState(() => _currentImage = item);
+                      _showThumbnailMenu(histIndex);
+                    },
+                    child: Stack(children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 120),
+                          decoration: BoxDecoration(
+                            border: isRef
+                                ? Border.all(color: const Color(0xFF6C3FC4), width: 2.5)
+                                : isSelected
+                                    ? Border.all(color: Colors.indigo, width: 2)
+                                    : null,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: AspectRatio(
+                            aspectRatio: 9 / 16,
+                            child: item.buildImage(fit: BoxFit.cover),
+                          ),
+                        ),
+                      ),
+                      if (isRef)
+                        const Positioned(
+                          right: 3, top: 3,
+                          child: Icon(Icons.push_pin, size: 11, color: Colors.white,
+                              shadows: [Shadow(blurRadius: 2, color: Colors.black54)]),
+                        ),
+                      if (isRoot && !isRef)
+                        const Positioned(
+                          left: 3, top: 3,
+                          child: Icon(Icons.star_rounded, size: 10, color: Colors.amber,
+                              shadows: [Shadow(blurRadius: 2, color: Colors.black54)]),
+                        ),
+                    ]),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1035,16 +1243,30 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(children: [
-              _buildDropdown(SceneType.values, _refScene,
-                  (v) => _refScene = v, (v) => v.label),
-              _buildDropdown(RefOutfitType.values, _refOutfit,
-                  (v) => _refOutfit = v, (v) => v.label),
+              _buildDropdown(SceneType.values, _refScene, (v) {
+                _refScene = v;
+                _lastRefStep = 0;
+                final valid = _sceneOutfitMap[v] ?? RefOutfitType.values;
+                if (!valid.contains(_refOutfit)) _refOutfit = valid.first;
+              }, (v) => v.label,
+                pillLabelOf: (v) => _lastRefStep == 0 ? v.label : v.label.split(' ').last),
+              _buildDropdown(
+                _sceneOutfitMap[_refScene] ?? RefOutfitType.values,
+                _refOutfit,
+                (v) { _refOutfit = v; _lastRefStep = 1; },
+                (v) => v.label,
+                pillLabelOf: (v) => _lastRefStep == 1 ? v.label : v.label.split(' ').last,
+              ),
+              _buildDropdown(PoseType.values, _refPose,
+                  (v) { _refPose = v; _lastRefStep = 2; }, (v) => v.label,
+                  pillLabelOf: (v) => _lastRefStep == 2 ? v.label : v.label.split(' ').last),
               _buildDropdown(LightType.values, _refLight,
-                  (v) => _refLight = v, (v) => v.label),
+                  (v) { _refLight = v; _lastRefStep = 3; }, (v) => v.label,
+                  pillLabelOf: (v) => _lastRefStep == 3 ? v.label : v.label.split(' ').last),
             ]),
           ),
         ),
-        const SizedBox(width: 2),
+        const SizedBox(width: 6),
         GestureDetector(
           onTap: _onGenerateTapped,
           child: AnimatedContainer(
@@ -1080,7 +1302,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
       ),
       clipBehavior: Clip.antiAlias,
       child: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? _buildLoadingTip()
           : _errorMessage != null
               ? Center(
                   child: Padding(
@@ -1151,113 +1373,33 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
   }
 
   Widget _buildNormalThumbnails() {
-    final groups = _buildThumbnailGroups();
-
     return SizedBox(
       height: 80,
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
         scrollDirection: Axis.horizontal,
-        itemCount: groups.length,
-        itemBuilder: (context, gi) {
-          final group = groups[gi];
-
-          if (group.length == 1) {
-            final item = group[0];
-            final index = _history.indexOf(item);
-            final isSelected = item == _currentImage;
-            return Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: GestureDetector(
-                onTap: () => setState(() => _currentImage = item),
-                onLongPress: () {
-                  setState(() => _currentImage = item);
-                  _showThumbnailMenu(index);
-                },
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 120),
-                    decoration: isSelected
-                        ? BoxDecoration(border: Border.all(color: Colors.indigo, width: 2), borderRadius: BorderRadius.circular(8))
-                        : null,
-                    child: AspectRatio(aspectRatio: 9 / 16, child: item.buildImage(fit: BoxFit.cover)),
-                  ),
+        itemCount: _history.length,
+        itemBuilder: (context, i) {
+          final item = _history[i];
+          final isSelected = item == _currentImage;
+          return Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: GestureDetector(
+              onTap: () => setState(() => _currentImage = item),
+              onLongPress: () {
+                setState(() => _currentImage = item);
+                _showThumbnailMenu(i);
+              },
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 120),
+                  decoration: isSelected
+                      ? BoxDecoration(border: Border.all(color: Colors.indigo, width: 2), borderRadius: BorderRadius.circular(8))
+                      : null,
+                  child: AspectRatio(aspectRatio: 9 / 16, child: item.buildImage(fit: BoxFit.cover)),
                 ),
               ),
-            );
-          }
-
-          // 묶음 그룹
-          final refItem = group[0];
-          final children = group.sublist(1);
-          return Container(
-            margin: const EdgeInsets.only(right: 8),
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: const Color(0xFF6C3FC4).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF6C3FC4).withValues(alpha: 0.35), width: 1),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // 원본 이미지
-                Stack(children: [
-                  GestureDetector(
-                    onTap: () => setState(() => _currentImage = refItem),
-                    onLongPress: () {
-                      setState(() => _currentImage = refItem);
-                      _showThumbnailMenu(_history.indexOf(refItem));
-                    },
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 120),
-                        decoration: refItem == _currentImage
-                            ? BoxDecoration(border: Border.all(color: const Color(0xFF6C3FC4), width: 2), borderRadius: BorderRadius.circular(6))
-                            : null,
-                        child: AspectRatio(aspectRatio: 9 / 16, child: refItem.buildImage(fit: BoxFit.cover)),
-                      ),
-                    ),
-                  ),
-                  const Positioned(
-                    right: 2, top: 2,
-                    child: Icon(Icons.push_pin, size: 10, color: Colors.white,
-                        shadows: [Shadow(blurRadius: 2, color: Colors.black54)]),
-                  ),
-                ]),
-                Container(
-                  width: 1, height: 36,
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  color: const Color(0xFF6C3FC4).withValues(alpha: 0.3),
-                ),
-                // 이어 만들기 이미지들
-                ...children.map((item) {
-                  final index = _history.indexOf(item);
-                  final isSelected = item == _currentImage;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 4),
-                    child: GestureDetector(
-                      onTap: () => setState(() => _currentImage = item),
-                      onLongPress: () {
-                        setState(() => _currentImage = item);
-                        _showThumbnailMenu(index);
-                      },
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 120),
-                          decoration: isSelected
-                              ? BoxDecoration(border: Border.all(color: const Color(0xFF6C3FC4), width: 2), borderRadius: BorderRadius.circular(6))
-                              : null,
-                          child: AspectRatio(aspectRatio: 9 / 16, child: item.buildImage(fit: BoxFit.cover)),
-                        ),
-                      ),
-                    ),
-                  );
-                }),
-              ],
             ),
           );
         },
@@ -1330,7 +1472,11 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
               title: Text(isRef ? '이어 만들기 해제' : '이 사진으로 이어 만들기'),
               onTap: () {
                 Navigator.pop(ctx);
-                setState(() => _refImage = isRef ? null : item);
+                if (isRef) {
+                  setState(() => _refImage = null);
+                } else {
+                  setState(() { _refImage = item; _lastRefStep = 0; });
+                }
               },
             ),
             ListTile(
@@ -1363,8 +1509,9 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
     List<T> values,
     T current,
     void Function(T) onSelect,
-    String Function(T) labelOf,
-  ) {
+    String Function(T) labelOf, {
+    String Function(T)? pillLabelOf,
+  }) {
     return PopupMenuButton<T>(
       onSelected: (v) => setState(() => onSelect(v)),
       itemBuilder: (ctx) => values
@@ -1381,7 +1528,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
                 ]),
               ))
           .toList(),
-      child: _dropdownPill(labelOf(current)),
+      child: _dropdownPill((pillLabelOf ?? labelOf)(current)),
     );
   }
 
@@ -1504,10 +1651,9 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
         top: false,
         child: Column(
           children: [
-            if (_refImage != null) ...[
-              _buildRefHeader(),
-              _buildRefOptions(),
-            ] else ...[
+            if (_refImage != null)
+              _buildRefOptions()
+            else ...[
 
             // ── 카드 1: 카테고리 선택 + 계절 ──
             Container(
@@ -1653,7 +1799,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
 
             // ── 썸네일 ──
             if (_refImage != null)
-              _buildRefThumbnails()
+              _buildFamilyThumbnails()
             else if (_history.isNotEmpty)
               _buildNormalThumbnails(),
 
