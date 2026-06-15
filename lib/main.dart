@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
@@ -10,11 +11,12 @@ import 'package:url_launcher/url_launcher.dart';
 import 'qr_scanner_view.dart';
 
 import 'download_helper.dart';
+import 'image_db.dart';
 
 const _geminiModel = 'gemini-2.5-flash-image';
 const _maxFreeImages = 5;
 const _maxDailyImages = 30;
-const _storeUrl = 'https://smartstore.naver.com/wowhit/products/13625209650';
+const _storeUrl = 'https://m.smartstore.naver.com/wowhit/products/13625209650';
 
 // ── 카테고리 ──────────────────────────────────────────
 
@@ -138,15 +140,77 @@ enum Vibe {
   }
 }
 
+// ── 레퍼런스 모드 전용 옵션 ──────────────────────────────
+
+enum SceneType {
+  cafe('카페 ☕', 'inside a cozy Korean cafe, warm ambient lighting'),
+  outdoor('야외 공원 🌿', 'in a beautiful outdoor park, natural daylight, green trees'),
+  city('도시 거리 🏙', 'on a trendy urban city street, Seoul cityscape, modern buildings'),
+  beach('해변 🏖', 'on a sandy beach, ocean waves, bright sunny day'),
+  indoor('실내 🏠', 'in a stylish modern interior, minimalist home, window light'),
+  party('파티 🎉', 'at an elegant party venue, festive atmosphere, warm lights'),
+  studio('스튜디오 📸', 'in a professional photo studio, clean white backdrop'),
+  gym('헬스장 💪', 'in a modern gym, exercise equipment background'),
+  restaurant('레스토랑 🍽', 'in a fine dining restaurant, elegant table setting, candlelight'),
+  rooftop('루프탑 🌆', 'on a rooftop with city skyline view, sunset atmosphere');
+
+  const SceneType(this.label, this.prompt);
+  final String label;
+  final String prompt;
+}
+
+enum RefOutfitType {
+  casual('캐주얼 👕', 'wearing casual everyday Korean street style'),
+  office('오피스룩 💼', 'wearing smart Korean business casual office wear'),
+  street('스트릿 🎒', 'wearing trendy urban Korean street fashion'),
+  dress('드레스 👗', 'wearing an elegant beautiful dress'),
+  formal('포멀 🎩', 'wearing formal sophisticated attire'),
+  sports('스포츠 🏃', 'wearing sporty athletic activewear'),
+  hanbok('한복 👘', 'wearing traditional Korean hanbok, colorful and elegant'),
+  swimwear('수영복 👙', 'wearing a stylish swimsuit'),
+  party('파티룩 🎊', 'wearing a glamorous party evening wear');
+
+  const RefOutfitType(this.label, this.prompt);
+  final String label;
+  final String prompt;
+}
+
+enum LightType {
+  natural('자연광 ☀', 'natural daylight, bright and airy'),
+  golden('황금빛 🌅', 'golden hour warm sunset light, soft orange glow'),
+  night('야경 🌙', 'night scene, city lights bokeh, neon glow'),
+  cloudy('흐린날 ☁', 'soft overcast diffused light, moody atmosphere'),
+  studio('스튜디오 💡', 'professional studio lighting, clean even illumination');
+
+  const LightType(this.label, this.prompt);
+  final String label;
+  final String prompt;
+}
+
 // ── 히스토리 아이템 ────────────────────────────────────
 
 class _HistoryItem {
   final Uint8List? bytes;
   final String? imageUrl;
   final String filename;
+  bool savedToGallery;
+  final DateTime createdAt;
 
-  _HistoryItem.fromBytes(Uint8List this.bytes, this.filename) : imageUrl = null;
-  _HistoryItem.fromUrl(String this.imageUrl, this.filename) : bytes = null;
+  _HistoryItem.fromBytes(
+    Uint8List this.bytes,
+    this.filename, {
+    this.savedToGallery = false,
+    DateTime? createdAt,
+  })  : imageUrl = null,
+        createdAt = createdAt ?? DateTime.now();
+
+  _HistoryItem.fromUrl(
+    String this.imageUrl,
+    this.filename, {
+    this.savedToGallery = false,
+    DateTime? createdAt,
+  })  : bytes = null,
+        createdAt = createdAt ?? DateTime.now();
 
   Widget buildImage({BoxFit fit = BoxFit.contain}) {
     if (imageUrl != null) return Image.network(imageUrl!, fit: fit);
@@ -196,8 +260,9 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
   bool _isLoading = false;
   String? _errorMessage;
   _HistoryItem? _currentImage;
+  _HistoryItem? _refImage;
   final List<_HistoryItem> _history = [];
-  Box? _historyBox;
+  Box? _historyBox; // 설정 전용 (마이그레이션 후 미사용)
 
   // 옵션 상태
   ImageCategory _lastCategory = ImageCategory.woman;
@@ -208,6 +273,11 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
   Vibe _vibe = Vibe.chic;
   int? _currentTempC;
 
+  // 레퍼런스 모드 옵션
+  SceneType _refScene = SceneType.cafe;
+  RefOutfitType _refOutfit = RefOutfitType.casual;
+  LightType _refLight = LightType.natural;
+
   // 프리미엄 상태
   Box? _settingsBox;
   int _freeUsed = 0;
@@ -216,6 +286,9 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
   int _dailyCount = 0;
   String _dailyDate = '';
   String? _userApiKey;
+
+  // 생성된 이미지 → 레퍼런스 파일명 매핑
+  Map<String, String> _refMap = {};
 
   @override
   void initState() {
@@ -227,15 +300,34 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
   // ── 히스토리 ────────────────────────────────────────
 
   Future<void> _loadHistory() async {
-    final box = await Hive.openBox('joa_history');
-    _historyBox = box;
-    final keys = box.keys.cast<String>().toList()..sort();
+    // Hive → SQLite 마이그레이션 (최초 1회)
+    try {
+      final hiveBox = await Hive.openBox('joa_history');
+      _historyBox = hiveBox;
+      if (hiveBox.isNotEmpty) {
+        final keys = hiveBox.keys.cast<String>().toList()..sort();
+        for (final key in keys) {
+          final b64 = hiveBox.get(key) as String?;
+          if (b64 == null) continue;
+          try {
+            await ImageDB.insert(key, base64Decode(b64));
+          } catch (_) {}
+        }
+        await hiveBox.clear();
+      }
+    } catch (_) {}
+
+    // SQLite에서 로드
+    final rows = await ImageDB.loadAll();
     final loaded = <_HistoryItem>[];
-    for (final key in keys.reversed) {
-      final b64 = box.get(key) as String?;
-      if (b64 == null) continue;
+    for (final row in rows) {
       try {
-        loaded.add(_HistoryItem.fromBytes(base64Decode(b64), key));
+        final bytes = row['bytes'] as Uint8List;
+        final filename = row['filename'] as String;
+        final saved = (row['saved_to_gallery'] as int) == 1;
+        final createdAt = DateTime.tryParse(row['created_at'] as String) ?? DateTime.now();
+        loaded.add(_HistoryItem.fromBytes(bytes, filename,
+            savedToGallery: saved, createdAt: createdAt));
       } catch (_) {}
     }
     if (mounted && loaded.isNotEmpty) {
@@ -246,18 +338,146 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
     }
   }
 
-  Future<void> _saveToBox(_HistoryItem item) async {
+  Future<void> _saveToDb(_HistoryItem item) async {
     if (item.bytes == null) return;
-    await _historyBox?.put(item.filename, base64Encode(item.bytes!));
-    final box = _historyBox;
-    if (box != null && box.length > 30) {
-      final oldest = (box.keys.cast<String>().toList()..sort()).first;
-      await box.delete(oldest);
-    }
+    await ImageDB.insert(item.filename, item.bytes!);
   }
 
   Future<void> _deleteFromBox(String filename) async {
-    await _historyBox?.delete(filename);
+    await ImageDB.delete(filename);
+  }
+
+  // 100장 초과 시 삭제 확인 다이얼로그
+  Future<bool> _showDeletionDialog(Map<String, dynamic> oldest) async {
+    final bytes = oldest['bytes'] as Uint8List;
+    final createdAt = DateTime.tryParse(oldest['created_at'] as String) ?? DateTime.now();
+    final isSaved = (oldest['saved_to_gallery'] as int) == 1;
+    final dateStr =
+        '${createdAt.year}.${createdAt.month.toString().padLeft(2, '0')}.${createdAt.day.toString().padLeft(2, '0')}';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('보관함이 가득 찼습니다', style: TextStyle(fontWeight: FontWeight.w700)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: AspectRatio(
+                aspectRatio: 9 / 16,
+                child: Image.memory(bytes, fit: BoxFit.cover),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(dateStr, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  isSaved ? Icons.check_circle_rounded : Icons.warning_amber_rounded,
+                  size: 14,
+                  color: isSaved ? Colors.green : Colors.orange,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  isSaved ? '갤러리에 저장됨' : '갤러리 미저장 (영구 삭제됨)',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isSaved ? Colors.green : Colors.orange,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              isSaved
+                  ? '이 이미지를 목록에서 삭제하고\n새 이미지를 생성하시겠습니까?'
+                  : '이 이미지는 갤러리에 저장되지 않았습니다.\n삭제하면 복구할 수 없습니다.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 13),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: isSaved ? Colors.blue : Colors.red,
+            ),
+            child: Text(isSaved ? '삭제 후 생성' : '영구 삭제 후 생성'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
+  // 100장 도달 안내
+  void _show100NoticeDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.photo_library_rounded, color: Colors.blue),
+            SizedBox(width: 8),
+            Text('이미지 100장 보관 중', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+          ],
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '앱 속도를 유지하기 위해 최대 100장을 권장합니다.\n'
+              '불필요한 이미지를 삭제해 보관 공간을 확보해 주세요.',
+              style: TextStyle(fontSize: 13),
+            ),
+            SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(Icons.lightbulb_outline, size: 14, color: Colors.amber),
+                SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '보관하고 싶은 이미지는 미리 갤러리에 저장해 두세요.\n'
+                    '갤러리에 저장된 이미지는 목록에서 삭제해도 안전합니다.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.info_outline, size: 14, color: Colors.blue),
+                SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '이후 새 이미지 생성 시 가장 오래된 이미지를\n삭제할지 확인합니다.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('확인'),
+          ),
+        ],
+      ),
+    );
   }
 
   // ── 날씨 ────────────────────────────────────────────
@@ -362,6 +582,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
       await box.put('dailyCount', 0);
     }
     if (mounted) {
+      final rawRefMap = box.get('refMap') as Map?;
       setState(() {
         _freeUsed = box.get('freeUsed', defaultValue: 0) as int;
         _subExpiry = box.get('subExpiry') as String?;
@@ -369,6 +590,9 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
         _dailyDate = today;
         _dailyCount = storedDate == today ? storedCount : 0;
         _userApiKey = box.get('userApiKey') as String?;
+        _refMap = rawRefMap != null
+            ? Map<String, String>.from(rawRefMap)
+            : {};
       });
     }
   }
@@ -431,7 +655,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
   // ── 다이얼로그 ───────────────────────────────────────
 
   void _showCodeInputDialog({VoidCallback? onActivated}) {
-    final ctrl = TextEditingController();
+    final ctrl = TextEditingController(text: 'JOA-');
     bool loading = false;
     String? error;
     showDialog<void>(
@@ -450,6 +674,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
               const SizedBox(height: 12),
               TextField(
                 controller: ctrl,
+                inputFormatters: [_JoaCodeFormatter()],
                 decoration: InputDecoration(
                   hintText: 'JOA-XXXX-XXXXXX',
                   border: const OutlineInputBorder(),
@@ -558,7 +783,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
         ),
       ),
     );
-    _loadSettings();
+    await _loadSettings();
   }
 
   void _showSettingsDialog() {
@@ -626,28 +851,39 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
 
   void _onGenerateTapped() {
     if (_isLoading) return;
-    _checkAndGenerate(_lastCategory);
+    if (_refImage != null) {
+      _checkAndGenerateWithLimit(() => _generateImage(null));
+    } else {
+      _checkAndGenerate(_lastCategory);
+    }
   }
 
-  void _checkAndGenerate(ImageCategory category) {
-    // 사용자 API 키가 있으면 한도 무시
-    if (_userApiKey != null && _userApiKey!.isNotEmpty) {
-      _generateImage(category);
-      return;
-    }
+  void _checkAndGenerateWithLimit(VoidCallback generate) {
+    if (_userApiKey != null && _userApiKey!.isNotEmpty) { generate(); return; }
     if (_isSubscribed()) {
       if (_dailyCount >= _maxDailyImages) { _showDailyLimitDialog(); return; }
     } else {
       if (_freeUsed >= _maxFreeImages) { _showPaywallDialog(); return; }
     }
-    _generateImage(category);
+    generate();
   }
 
-  Future<void> _generateImage(ImageCategory category) async {
+  void _checkAndGenerate(ImageCategory category) {
+    _checkAndGenerateWithLimit(() => _generateImage(category));
+  }
+
+  String _buildRefModePrompt() {
+    return '${_refScene.prompt}, ${_refOutfit.prompt}, ${_refLight.prompt}, '
+        'high quality Korean fashion editorial photography';
+  }
+
+  Future<void> _generateImage(ImageCategory? category) async {
     setState(() { _isLoading = true; _errorMessage = null; });
 
     try {
-      final prompt = await _buildPrompt(category);
+      final prompt = (_refImage != null)
+          ? _buildRefModePrompt()
+          : await _buildPrompt(category!);
 
       final uri = kIsWeb
           ? Uri.parse('/api/image')
@@ -659,6 +895,9 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
         body['apiKey'] = userKey;
       } else if (_subCode != null && _subCode!.isNotEmpty) {
         body['subCode'] = _subCode;
+      }
+      if (_refImage?.bytes != null) {
+        body['referenceImage'] = base64Encode(_refImage!.bytes!);
       }
 
       final response = await http.post(
@@ -676,13 +915,43 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
       final b64 = (data.first as Map<String, dynamic>)['b64_json'] as String;
 
       final filename = '${DateTime.now().millisecondsSinceEpoch}.png';
-      final item = _HistoryItem.fromBytes(base64Decode(b64), filename);
+      final imageBytes = base64Decode(b64);
+
+      // 100장 초과 시 삭제 확인
+      final currentCount = await ImageDB.count();
+      if (currentCount >= 100) {
+        final oldest = await ImageDB.oldestForDeletion();
+        if (oldest != null) {
+          final confirmed = await _showDeletionDialog(oldest);
+          if (!confirmed || !mounted) return;
+          final oldFilename = oldest['filename'] as String;
+          await ImageDB.delete(oldFilename);
+          if (mounted) {
+            setState(() {
+              _history.removeWhere((h) => h.filename == oldFilename);
+              if (_currentImage?.filename == oldFilename) _currentImage = null;
+              if (_refImage?.filename == oldFilename) _refImage = null;
+            });
+          }
+        }
+      }
+
+      final item = _HistoryItem.fromBytes(imageBytes, filename);
+      if (_refImage != null) {
+        _refMap[filename] = _refImage!.filename;
+        await _settingsBox?.put('refMap', _refMap);
+      }
+      await _saveToDb(item);
       setState(() {
         _currentImage = item;
         _history.insert(0, item);
       });
-      await _saveToBox(item);
       if (userKey == null || userKey.isEmpty) await _incrementUsage();
+
+      // 100장 도달 안내 (방금 저장해서 100장이 된 경우)
+      if (currentCount == 99 && mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _show100NoticeDialog());
+      }
     } catch (e) {
       setState(() => _errorMessage = e.toString());
     } finally {
@@ -692,21 +961,378 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
 
   Future<void> _downloadImage(_HistoryItem item) async {
     final error = await saveImageToDevice(item.bytes, item.imageUrl, item.filename);
+    if (error == null) {
+      await ImageDB.markSaved(item.filename);
+      item.savedToGallery = true;
+    }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error == null ? '저장했습니다.' : '저장 실패: $error')),
+        SnackBar(content: Text(error == null ? '갤러리에 저장했습니다.' : '저장 실패: $error')),
       );
     }
   }
 
+  // ── 레퍼런스 모드 UI ─────────────────────────────────
+
+  Widget _buildRefHeader() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2D1B69),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 10, offset: const Offset(0, 3)),
+        ],
+      ),
+      child: Row(children: [
+        const Icon(Icons.push_pin, size: 14, color: Colors.white70),
+        const SizedBox(width: 8),
+        const Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('이어 만들기',
+                  style: TextStyle(color: Colors.white,
+                      fontWeight: FontWeight.w700, fontSize: 14)),
+              Text('원본 사진 인물로 새로운 장면을 만듭니다',
+                  style: TextStyle(color: Colors.white54, fontSize: 11)),
+            ],
+          ),
+        ),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            width: 44, height: 60,
+            child: _refImage!.buildImage(fit: BoxFit.cover),
+          ),
+        ),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: () => setState(() => _refImage = null),
+          child: const Icon(Icons.close, color: Colors.white54, size: 20),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildRefOptions() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+      padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.07),
+              blurRadius: 8, offset: const Offset(0, 2)),
+        ],
+      ),
+      child: Row(children: [
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(children: [
+              _buildDropdown(SceneType.values, _refScene,
+                  (v) => _refScene = v, (v) => v.label),
+              _buildDropdown(RefOutfitType.values, _refOutfit,
+                  (v) => _refOutfit = v, (v) => v.label),
+              _buildDropdown(LightType.values, _refLight,
+                  (v) => _refLight = v, (v) => v.label),
+            ]),
+          ),
+        ),
+        const SizedBox(width: 2),
+        GestureDetector(
+          onTap: _onGenerateTapped,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 100),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+            decoration: BoxDecoration(
+              color: _isLoading ? Colors.grey.shade300 : const Color(0xFF6C3FC4),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: _isLoading
+                ? SizedBox(
+                    width: 18, height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.grey.shade500))
+                : const Icon(Icons.auto_awesome_rounded,
+                    color: Colors.white, size: 18),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildMainImageArea() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 8, offset: const Offset(0, 2)),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _errorMessage != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Text(_errorMessage!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                  ),
+                )
+              : _currentImage == null
+                  ? Center(
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.auto_awesome_rounded,
+                            size: 52, color: Colors.grey.shade300),
+                        const SizedBox(height: 10),
+                        Text('✨ 버튼을 눌러 생성하세요',
+                            style: TextStyle(fontSize: 13, color: Colors.grey.shade400)),
+                      ]),
+                    )
+                  : Stack(children: [
+                      InteractiveViewer(
+                        minScale: 1.0,
+                        maxScale: 5.0,
+                        child: SizedBox.expand(
+                          child: _currentImage!.buildImage(fit: BoxFit.cover),
+                        ),
+                      ),
+                      Positioned(
+                        right: 10, bottom: 10,
+                        child: FloatingActionButton.small(
+                          heroTag: 'download',
+                          onPressed: () => _downloadImage(_currentImage!),
+                          backgroundColor: Colors.black45,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          child: const Icon(Icons.download_rounded, size: 20),
+                        ),
+                      ),
+                    ]),
+    );
+  }
+
+  List<List<_HistoryItem>> _buildThumbnailGroups() {
+    final processed = <String>{};
+    final groups = <List<_HistoryItem>>[];
+
+    for (final item in _history) {
+      if (processed.contains(item.filename)) continue;
+      final refFilename = _refMap[item.filename];
+      if (refFilename != null) {
+        if (processed.contains(refFilename)) continue;
+        final refItem = _history.where((h) => h.filename == refFilename).firstOrNull;
+        if (refItem == null) {
+          groups.add([item]);
+          processed.add(item.filename);
+          continue;
+        }
+        final siblings = _history.where((h) => _refMap[h.filename] == refFilename).toList();
+        final group = [refItem, ...siblings];
+        for (final g in group) processed.add(g.filename);
+        groups.add(group);
+      } else {
+        groups.add([item]);
+        processed.add(item.filename);
+      }
+    }
+    return groups;
+  }
+
+  Widget _buildNormalThumbnails() {
+    final groups = _buildThumbnailGroups();
+
+    return SizedBox(
+      height: 80,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        scrollDirection: Axis.horizontal,
+        itemCount: groups.length,
+        itemBuilder: (context, gi) {
+          final group = groups[gi];
+
+          if (group.length == 1) {
+            final item = group[0];
+            final index = _history.indexOf(item);
+            final isSelected = item == _currentImage;
+            return Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: GestureDetector(
+                onTap: () => setState(() => _currentImage = item),
+                onLongPress: () {
+                  setState(() => _currentImage = item);
+                  _showThumbnailMenu(index);
+                },
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 120),
+                    decoration: isSelected
+                        ? BoxDecoration(border: Border.all(color: Colors.indigo, width: 2), borderRadius: BorderRadius.circular(8))
+                        : null,
+                    child: AspectRatio(aspectRatio: 9 / 16, child: item.buildImage(fit: BoxFit.cover)),
+                  ),
+                ),
+              ),
+            );
+          }
+
+          // 묶음 그룹
+          final refItem = group[0];
+          final children = group.sublist(1);
+          return Container(
+            margin: const EdgeInsets.only(right: 8),
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: const Color(0xFF6C3FC4).withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF6C3FC4).withValues(alpha: 0.35), width: 1),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 원본 이미지
+                Stack(children: [
+                  GestureDetector(
+                    onTap: () => setState(() => _currentImage = refItem),
+                    onLongPress: () {
+                      setState(() => _currentImage = refItem);
+                      _showThumbnailMenu(_history.indexOf(refItem));
+                    },
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 120),
+                        decoration: refItem == _currentImage
+                            ? BoxDecoration(border: Border.all(color: const Color(0xFF6C3FC4), width: 2), borderRadius: BorderRadius.circular(6))
+                            : null,
+                        child: AspectRatio(aspectRatio: 9 / 16, child: refItem.buildImage(fit: BoxFit.cover)),
+                      ),
+                    ),
+                  ),
+                  const Positioned(
+                    right: 2, top: 2,
+                    child: Icon(Icons.push_pin, size: 10, color: Colors.white,
+                        shadows: [Shadow(blurRadius: 2, color: Colors.black54)]),
+                  ),
+                ]),
+                Container(
+                  width: 1, height: 36,
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  color: const Color(0xFF6C3FC4).withValues(alpha: 0.3),
+                ),
+                // 이어 만들기 이미지들
+                ...children.map((item) {
+                  final index = _history.indexOf(item);
+                  final isSelected = item == _currentImage;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: GestureDetector(
+                      onTap: () => setState(() => _currentImage = item),
+                      onLongPress: () {
+                        setState(() => _currentImage = item);
+                        _showThumbnailMenu(index);
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 120),
+                          decoration: isSelected
+                              ? BoxDecoration(border: Border.all(color: const Color(0xFF6C3FC4), width: 2), borderRadius: BorderRadius.circular(6))
+                              : null,
+                          child: AspectRatio(aspectRatio: 9 / 16, child: item.buildImage(fit: BoxFit.cover)),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildRefThumbnails() {
+    final refFilename = _refImage!.filename;
+    final filtered = _history
+        .where((item) => _refMap[item.filename] == refFilename)
+        .toList();
+
+    if (filtered.isEmpty) return const SizedBox(height: 8);
+
+    return SizedBox(
+      height: 74,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        scrollDirection: Axis.horizontal,
+        itemCount: filtered.length,
+        itemBuilder: (context, index) {
+          final item = filtered[index];
+          final histIndex = _history.indexOf(item);
+          final isSelected = item == _currentImage;
+          return Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: GestureDetector(
+              onTap: () => setState(() => _currentImage = item),
+              onLongPress: () {
+                setState(() => _currentImage = item);
+                _showThumbnailMenu(histIndex);
+              },
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 120),
+                  decoration: isSelected
+                      ? BoxDecoration(
+                          border: Border.all(color: const Color(0xFF6C3FC4), width: 2),
+                          borderRadius: BorderRadius.circular(8))
+                      : null,
+                  child: AspectRatio(
+                    aspectRatio: 9 / 16,
+                    child: item.buildImage(fit: BoxFit.cover),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   void _showThumbnailMenu(int index) {
     final item = _history[index];
+    final isRef = _refImage == item;
     showModalBottomSheet<void>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: Icon(
+                isRef ? Icons.push_pin : Icons.push_pin_outlined,
+                color: isRef ? Colors.indigo : null,
+              ),
+              title: Text(isRef ? '이어 만들기 해제' : '이 사진으로 이어 만들기'),
+              onTap: () {
+                Navigator.pop(ctx);
+                setState(() => _refImage = isRef ? null : item);
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.download_rounded),
               title: const Text('다운로드'),
@@ -720,6 +1346,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
                 _deleteFromBox(item.filename);
                 setState(() {
                   if (_currentImage == item) _currentImage = null;
+                  if (_refImage == item) _refImage = null;
                   _history.removeAt(index);
                 });
               },
@@ -877,6 +1504,10 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
         top: false,
         child: Column(
           children: [
+            if (_refImage != null) ...[
+              _buildRefHeader(),
+              _buildRefOptions(),
+            ] else ...[
 
             // ── 카드 1: 카테고리 선택 + 계절 ──
             Container(
@@ -1013,104 +1644,18 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
               ]),
             ),
 
+            ], // end normal mode
+
             const SizedBox(height: 8),
 
             // ── 메인 이미지 ──
-            Expanded(
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade200,
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 8, offset: const Offset(0, 2)),
-                  ],
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _errorMessage != null
-                        ? Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(20),
-                              child: Text(_errorMessage!,
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                      fontSize: 13, color: Colors.grey.shade600)),
-                            ),
-                          )
-                        : _currentImage == null
-                            ? Center(
-                                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                                  Icon(Icons.auto_awesome_rounded,
-                                      size: 52, color: Colors.grey.shade300),
-                                  const SizedBox(height: 10),
-                                  Text('✨ 버튼을 눌러 생성하세요',
-                                      style: TextStyle(
-                                          fontSize: 13, color: Colors.grey.shade400)),
-                                ]),
-                              )
-                            : Stack(children: [
-                                InteractiveViewer(
-                                  minScale: 1.0,
-                                  maxScale: 5.0,
-                                  child: SizedBox.expand(
-                                    child: _currentImage!.buildImage(fit: BoxFit.cover),
-                                  ),
-                                ),
-                                Positioned(
-                                  right: 10,
-                                  bottom: 10,
-                                  child: FloatingActionButton.small(
-                                    heroTag: 'download',
-                                    onPressed: () => _downloadImage(_currentImage!),
-                                    backgroundColor: Colors.black45,
-                                    foregroundColor: Colors.white,
-                                    elevation: 0,
-                                    child: const Icon(Icons.download_rounded, size: 20),
-                                  ),
-                                ),
-                              ]),
-              ),
-            ),
+            Expanded(child: _buildMainImageArea()),
 
             // ── 썸네일 ──
-            if (_history.isNotEmpty)
-              SizedBox(
-                height: 74,
-                child: ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _history.length,
-                  itemBuilder: (context, index) {
-                    final item = _history[index];
-                    final isSelected = item == _currentImage;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: GestureDetector(
-                        onTap: () => setState(() => _currentImage = item),
-                        onLongPress: () => _showThumbnailMenu(index),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 120),
-                            decoration: isSelected
-                                ? BoxDecoration(
-                                    border: Border.all(color: Colors.indigo, width: 2),
-                                    borderRadius: BorderRadius.circular(8))
-                                : null,
-                            child: AspectRatio(
-                              aspectRatio: 9 / 16,
-                              child: item.buildImage(fit: BoxFit.cover),
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
+            if (_refImage != null)
+              _buildRefThumbnails()
+            else if (_history.isNotEmpty)
+              _buildNormalThumbnails(),
 
             const SizedBox(height: 8),
           ],
@@ -1159,7 +1704,7 @@ class _SettingsPageState extends State<SettingsPage> {
   int _dailyCount = 0;
 
   // 코드 입력 상태
-  final _codeCtrl = TextEditingController();
+  final _codeCtrl = TextEditingController(text: 'JOA-');
   bool _codeLoading = false;
   String? _codeError;
 
@@ -1183,7 +1728,17 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _saveKey() async {
     final key = _keyCtrl.text.trim();
-    await widget.settingsBox?.put('userApiKey', key.isEmpty ? null : key);
+    try {
+      final box = widget.settingsBox ?? await Hive.openBox('joa_settings');
+      await box.put('userApiKey', key.isEmpty ? null : key);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('저장 실패: $e')),
+        );
+      }
+      return;
+    }
     if (!mounted) return;
     setState(() {
       _savedKey = key.isEmpty ? null : key;
@@ -1198,7 +1753,8 @@ class _SettingsPageState extends State<SettingsPage> {
     final err = await widget.onRedeemCode(_codeCtrl.text);
     if (!mounted) return;
     if (err == null) {
-      _codeCtrl.clear();
+      _codeCtrl.text = 'JOA-';
+      _codeCtrl.selection = TextSelection.collapsed(offset: 4);
       final expiry = widget.settingsBox?.get('subExpiry') as String?;
       setState(() {
         _isSubscribed = true;
@@ -1351,6 +1907,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 controller: _codeCtrl,
                 enabled: !_isSubscribed,
                 textCapitalization: TextCapitalization.characters,
+                inputFormatters: [_JoaCodeFormatter()],
                 style: const TextStyle(fontSize: 13, letterSpacing: 1),
                 decoration: InputDecoration(
                   hintText: _isSubscribed ? '구독 중입니다' : 'JOA-XXXX-XXXXXX',
@@ -1534,5 +2091,28 @@ class _QrScanPageState extends State<QrScanPage> {
         ),
       ]),
     );
+  }
+}
+
+// JOA-####-###### 자동 포맷터
+class _JoaCodeFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue old, TextEditingValue val) {
+    String raw = val.text.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
+    raw = 'JOA' + (raw.length > 3 ? raw.substring(3) : '');
+    if (raw.length > 13) raw = raw.substring(0, 13);
+
+    final b = StringBuffer();
+    for (int i = 0; i < raw.length; i++) {
+      if (i == 3 || i == 7) b.write('-');
+      b.write(raw[i]);
+    }
+    // JOA- 는 항상 최소 상태로 유지
+    if (raw.length == 3) b.write('-');
+    // 4자리 세그먼트 완성 시 즉시 - 추가 (타이핑 중에만)
+    else if (raw.length == 7 && val.text.length >= old.text.length) b.write('-');
+
+    final text = b.toString();
+    return TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length));
   }
 }

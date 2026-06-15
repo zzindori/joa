@@ -1,4 +1,4 @@
-const VM_URL = 'http://152.67.208.156:3000';
+const VM_URL = 'https://api.wowhit.org';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -8,7 +8,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { prompt, apiKey, subCode } = req.body;
+  const { prompt, apiKey, subCode, referenceImage } = req.body;
   if (!prompt) return res.status(400).json({ error: 'prompt required' });
 
   const key = apiKey || process.env.GEMINI_API_KEY;
@@ -26,7 +26,8 @@ export default async function handler(req, res) {
       const quota = await vmRes.json();
       if (!quota.ok) return res.status(403).json({ error: quota.error });
     } catch (e) {
-      return res.status(500).json({ error: '쿼터 서버 오류: ' + e.message });
+      // 쿼터 서버 장애 시 생성 허용 (서버 다운 방어)
+      console.error('쿼터 서버 오류 (통과):', e.message);
     }
   }
 
@@ -37,7 +38,16 @@ export default async function handler(req, res) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: `${prompt}, vertical 9:16 portrait aspect ratio` }] }],
+          contents: [{
+            parts: [
+              ...(referenceImage ? [{ inlineData: { mimeType: 'image/png', data: referenceImage } }] : []),
+              {
+                text: referenceImage
+                  ? `Keep exactly the same person's face and identity from the reference image. ${prompt}, vertical 9:16 portrait aspect ratio`
+                  : `${prompt}, vertical 9:16 portrait aspect ratio`,
+              },
+            ],
+          }],
           generationConfig: { responseModalities: ['IMAGE'] },
         }),
       }

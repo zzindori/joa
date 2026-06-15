@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 
-const VM_URL = 'https://api.wowhit.org';
+const VM_URL = 'http://152.67.208.156:3000';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -13,17 +13,17 @@ export default async function handler(req, res) {
   const { code } = req.body || {};
   if (!code) return res.status(400).json({ error: '코드를 입력해주세요' });
 
-  const secret = process.env.CODE_SECRET;
+  const secret = process.env.ITNE_CODE_SECRET;
   if (!secret) return res.status(500).json({ error: '서버 설정 오류' });
 
   const normalized = code.trim().toUpperCase().replace(/[-\s]/g, '');
-  const match = normalized.match(/^JOA(\d{4})([A-F0-9]{6})$/);
+  const match = normalized.match(/^ITNE(\d{2})(\d{4})([A-F0-9]{6})$/);
   if (!match) return res.status(400).json({ error: '유효하지 않은 코드 형식입니다' });
 
-  const [, index, checksum] = match;
+  const [, months, serial, checksum] = match;
   const expected = crypto
     .createHmac('sha256', secret)
-    .update(`JOA:ANNUAL:${index}`)
+    .update(`ITNE:${months}:${serial}`)
     .digest('hex')
     .slice(0, 6)
     .toUpperCase();
@@ -33,13 +33,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    const vmRes = await fetch(`${VM_URL}/redeem`, {
+    const vmRes = await fetch(`${VM_URL}/itne/redeem`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-vm-secret': process.env.VM_SECRET },
       body: JSON.stringify({ code: normalized }),
     });
     const data = await vmRes.json();
-    return res.status(200).json({ success: true, expiresAt: data.expiresAt });
+    if (!vmRes.ok) return res.status(400).json({ error: data.error || '이미 사용된 코드입니다' });
+    return res.status(200).json({ success: true, months: parseInt(months, 10) });
   } catch (e) {
     return res.status(500).json({ error: '서버 오류: ' + e.message });
   }

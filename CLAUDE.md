@@ -33,14 +33,37 @@ assets/
 - **이미지 비율**: 9:16 (세로형)
 - **응답 형식**: `inlineData.data` (base64)
 
-## 환경변수
+## 빌드 방법
 
-### Android 빌드 시
+### APK 빌드
+
 ```bash
-flutter build apk --dart-define=GEMINI_API_KEY=your_key
+bash build.sh
 ```
 
-### Vercel 환경변수 (vercel env add)
+- API 키는 빌드 시 주입하지 않음 — 사용자가 앱 내 설정에서 직접 입력하거나 Vercel 프록시를 통해 처리
+- 릴리즈 서명은 현재 debug 키 사용 (별도 keystore 미설정)
+- `~/.secrets/` 파일 불필요
+
+### 빌드 결과물
+
+```
+build/app/outputs/flutter-apk/app-release.apk
+```
+
+### 웹 빌드 및 Vercel 배포
+
+```bash
+flutter build web
+cp api/image.js build/web/api/image.js     # 반드시 복사!
+cp api/redeem.js build/web/api/redeem.js   # 반드시 복사!
+vercel deploy build/web --prod --yes
+```
+
+> **주의**: `vercel deploy build/web`은 `build/web` 파일만 배포.
+> `api/*.js`를 반드시 `build/web/api/`에 복사해야 최신 버전 반영됨.
+
+## Vercel 환경변수 (vercel env add)
 - `GEMINI_API_KEY`: Gemini API 키
 - `CODE_SECRET`: 구독 코드 HMAC 서명 비밀키 (설정 완료)
 
@@ -54,16 +77,6 @@ flutter build apk --dart-define=GEMINI_API_KEY=your_key
 - **웹앱 URL**: https://web-tau-nine-22.vercel.app
 - **GitHub**: https://github.com/zzindori/joa
 - Vercel CLI로 직접 배포 (GitHub 자동 배포 아님)
-
-## 웹 빌드 및 배포
-```bash
-flutter build web
-cp api/image.js build/web/api/image.js     # 반드시 복사!
-cp api/redeem.js build/web/api/redeem.js   # 반드시 복사!
-vercel deploy build/web --prod --yes
-```
-- **주의**: `vercel deploy build/web`은 `build/web` 파일만 배포함.
-  api/*.js를 반드시 `build/web/api/`에 복사해야 최신 버전 반영됨.
 
 ## API 동작 방식
 - `api/image.js`: Gemini 호출 → base64 변환 → Flutter 전달 (CORS 우회)
@@ -95,6 +108,47 @@ CODE_SECRET=your_secret node scripts/gen_codes.js 20 11
 ### Hive 박스
 - `joa_history`: 이미지 base64 (키=파일명)
 - `joa_settings`: freeUsed, subExpiry, dailyCount, dailyDate, usedCodes
+
+## 웹 대응 TODO (미완료)
+
+### 문제: `gal` 패키지 웹 미지원
+`gal`은 Android/iOS 갤러리 저장용 패키지로 웹에서 동작 안 함.
+
+**해결 방법**: `kIsWeb` 분기로 웹에서는 파일 다운로드로 대체
+
+```dart
+import 'package:flutter/foundation.dart' show kIsWeb;
+// 웹일 때
+import 'dart:html' as html; // web only
+
+// 저장 버튼 콜백에서:
+if (kIsWeb) {
+  // base64 이미지를 blob으로 변환 후 다운로드 트리거
+  final bytes = base64Decode(imageBase64);
+  final blob = html.Blob([bytes], 'image/png');
+  final url = html.Url.createObjectUrlFromBlob(blob);
+  final anchor = html.AnchorElement(href: url)
+    ..setAttribute('download', 'joa_${DateTime.now().millisecondsSinceEpoch}.png')
+    ..click();
+  html.Url.revokeObjectUrl(url);
+} else {
+  await Gal.putImageBytes(bytes);
+}
+```
+
+> `dart:html`은 웹 전용이라 직접 import하면 Android 빌드 깨짐.
+> `--dart-define=FLUTTER_WEB=true` 같은 방식보다
+> `universal_html` 패키지 쓰면 조건부 import 없이 처리 가능.
+
+### 배포 플로우 (현재)
+```
+flutter build web
+cp api/image.js build/web/api/image.js
+cp api/redeem.js build/web/api/redeem.js
+vercel deploy build/web --prod --yes
+```
+
+---
 
 ## 변경 히스토리
 
