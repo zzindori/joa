@@ -22,7 +22,6 @@ const _storeUrl = 'https://m.smartstore.naver.com/wowhit/products/13625209650';
 // ── 카테고리 ──────────────────────────────────────────
 
 enum ImageCategory {
-  landscape('풍경', '🌄', Color(0xFF43A047)),
   woman('여자', '👩', Color(0xFFE91E8C)),
   man('남자', '👨', Color(0xFF1E88E5));
 
@@ -103,16 +102,6 @@ enum Season {
         _ => 'comfortable casual outfit',
       };
 
-  String get landscapePrompt => switch (this) {
-        spring =>
-          'Beautiful spring cherry blossom landscape in Korea, soft pink petals falling gently, warm sunlight, dreamy and romantic atmosphere, cinematic quality photography',
-        summer =>
-          'Vibrant summer landscape in Korea, lush green mountains and forests, bright sunshine, clear blue sky, vivid energetic scenery, cinematic quality',
-        winter =>
-          'Serene snowy winter landscape in Korea, pristine white snow covering forests and mountains, peaceful quiet atmosphere, stunning scenic photography',
-        _ =>
-          'Beautiful scenic landscape in Korea, golden sunlight over green mountains, clear sky, cinematic quality photography',
-      };
 }
 
 enum Vibe {
@@ -591,36 +580,9 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
     return 'very light summer clothes, sleeveless or tank top, hot weather outfit';
   }
 
-  String _weatherLandscapePrompt(int tempC, String desc) {
-    final lower = desc.toLowerCase();
-    if (lower.contains('rain') || lower.contains('drizzle') || lower.contains('shower')) {
-      return 'Breathtaking rainy landscape in Korea, lush green hillside glistening with rain, misty mountains, dramatic atmospheric photography, cinematic quality';
-    }
-    if (lower.contains('snow') || lower.contains('blizzard') || tempC <= 0) {
-      return 'Breathtaking snowy mountain landscape in Korea, pristine white snow covering forests and peaks, serene winter beauty, cinematic quality';
-    }
-    if (lower.contains('cloud') || lower.contains('overcast') || lower.contains('fog')) {
-      return 'Dramatic cloudy landscape in Korea, moody sky with sunrays breaking through clouds over rolling hills, atmospheric nature photography';
-    }
-    if (tempC >= 28) {
-      return 'Vibrant hot summer landscape in Korea, bright sunlight over lush green fields, clear blue sky, vivid energetic summer scenery, cinematic quality';
-    }
-    return 'Breathtaking sunny landscape in Korea, golden sunlight over green mountains and valleys, clear sky, cinematic quality';
-  }
-
   // ── 프롬프트 빌더 ─────────────────────────────────────
 
   Future<String> _buildPrompt(ImageCategory category) async {
-    if (category == ImageCategory.landscape) {
-      if (_season == Season.current) {
-        final weather = await _fetchWeather();
-        return weather != null
-            ? _weatherLandscapePrompt(weather.tempC, weather.desc)
-            : Season.spring.landscapePrompt;
-      }
-      return _season.landscapePrompt;
-    }
-
     final gender = category == ImageCategory.woman ? 'Korean woman' : 'Korean man';
     String seasonOutfit;
 
@@ -1584,7 +1546,6 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
   @override
   Widget build(BuildContext context) {
     final subscribed = _isSubscribed();
-    final isPerson = _lastCategory != ImageCategory.landscape;
     final seasonLabel = _season == Season.current && _currentTempC != null
         ? '${_season.emoji} $_currentTempC°C'
         : '${_season.emoji} ${_season.label}';
@@ -1751,16 +1712,14 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(children: [
-                      if (isPerson) ...[
-                        _buildDropdown(AgeGroup.values, _ageGroup,
-                            (v) => _ageGroup = v, (v) => v.label),
-                        _buildDropdown(BodyType.values, _bodyType,
-                            (v) => _bodyType = v, (v) => v.label),
-                        _buildDropdown(StyleType.values, _styleType,
-                            (v) => _styleType = v, (v) => v.label),
-                        _buildDropdown(Vibe.values, _vibe,
-                            (v) => _vibe = v, (v) => v.label),
-                      ],
+                      _buildDropdown(AgeGroup.values, _ageGroup,
+                          (v) => _ageGroup = v, (v) => v.label),
+                      _buildDropdown(BodyType.values, _bodyType,
+                          (v) => _bodyType = v, (v) => v.label),
+                      _buildDropdown(StyleType.values, _styleType,
+                          (v) => _styleType = v, (v) => v.label),
+                      _buildDropdown(Vibe.values, _vibe,
+                          (v) => _vibe = v, (v) => v.label),
                     ]),
                   ),
                 ),
