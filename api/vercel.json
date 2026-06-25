@@ -1,0 +1,6 @@
+{
+  "functions": {
+    "api/image.js": { "maxDuration": 60 },
+    "api/redeem.js": { "maxDuration": 10 }
+  }
+}

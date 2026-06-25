@@ -57,6 +57,8 @@ export default async function handler(req, res) {
 
     if (!apiRes.ok) {
       const text = await apiRes.text();
+      console.error(`Gemini error ${apiRes.status}:`, text.slice(0, 300));
+      if (apiRes.status === 503) return res.status(503).json({ error: 'Gemini 서버가 잠시 바쁩니다. 잠시 후 다시 시도해주세요.' });
       return res.status(apiRes.status).setHeader('Content-Type', 'application/json').send(text);
     }
 
@@ -72,6 +74,7 @@ export default async function handler(req, res) {
       data: [{ b64_json: imagePart.inlineData.data }],
     });
   } catch (e) {
+    console.error('image gen error:', e.message);
     return res.status(502).json({ error: e.message });
   }
 }
