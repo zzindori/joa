@@ -1,3 +1,5 @@
+export const config = { maxDuration: 60 };
+
 const VM_URL = 'https://api.wowhit.org';
 
 export default async function handler(req, res) {

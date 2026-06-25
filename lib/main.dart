@@ -953,7 +953,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
         uri,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(body),
-      );
+      ).timeout(const Duration(seconds: 90));
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception('API 오류(${response.statusCode}): ${response.body}');
