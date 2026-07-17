@@ -14,7 +14,6 @@ import 'qr_scanner_view.dart';
 import 'download_helper.dart';
 import 'image_db.dart';
 
-const _geminiModel = 'gemini-2.5-flash-image';
 const _maxFreeImages = 5;
 const _maxDailyImages = 30;
 const _storeUrl = 'https://m.smartstore.naver.com/wowhit/products/13625209650';
@@ -673,7 +672,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
     try {
       final uri = kIsWeb
           ? Uri.parse('/api/redeem')
-          : Uri.parse('https://web-tau-nine-22.vercel.app/api/redeem');
+          : Uri.parse('https://web-seven-lovat-76.vercel.app/api/redeem');
       final res = await http
           .post(uri,
               headers: {'Content-Type': 'application/json'},
@@ -698,7 +697,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
   // ── 다이얼로그 ───────────────────────────────────────
 
   void _showCodeInputDialog({VoidCallback? onActivated}) {
-    final ctrl = TextEditingController(text: 'JOA-');
+    final ctrl = _JoaGhostController();
     bool loading = false;
     String? error;
     showDialog<void>(
@@ -719,7 +718,6 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
                 controller: ctrl,
                 inputFormatters: [_JoaCodeFormatter()],
                 decoration: InputDecoration(
-                  hintText: 'JOA-XXXX-XXXXXX',
                   border: const OutlineInputBorder(),
                   errorText: error,
                 ),
@@ -936,7 +934,7 @@ class _ImageRequestPageState extends State<ImageRequestPage> {
 
       final uri = kIsWeb
           ? Uri.parse('/api/image')
-          : Uri.parse('https://web-tau-nine-22.vercel.app/api/image');
+          : Uri.parse('https://web-seven-lovat-76.vercel.app/api/image');
 
       final body = <String, dynamic>{'prompt': prompt};
       final userKey = _userApiKey;
@@ -1809,7 +1807,7 @@ class _SettingsPageState extends State<SettingsPage> {
   int _dailyCount = 0;
 
   // 코드 입력 상태
-  final _codeCtrl = TextEditingController(text: 'JOA-');
+  final _codeCtrl = _JoaGhostController();
   bool _codeLoading = false;
   String? _codeError;
 
@@ -1905,7 +1903,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     obscureText: _obscure,
                     style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
                     decoration: InputDecoration(
-                      hintText: 'AIzaSy...',
+                      hintText: 'AQ.Ab...',
                       hintStyle: TextStyle(color: Colors.grey.shade400),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -2015,7 +2013,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 inputFormatters: [_JoaCodeFormatter()],
                 style: const TextStyle(fontSize: 13, letterSpacing: 1),
                 decoration: InputDecoration(
-                  hintText: _isSubscribed ? '구독 중입니다' : 'JOA-XXXX-XXXXXX',
+                  hintText: _isSubscribed ? '구독 중입니다' : null,
                   hintStyle: TextStyle(color: Colors.grey.shade400, letterSpacing: 0),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -2200,6 +2198,34 @@ class _QrScanPageState extends State<QrScanPage> {
 }
 
 // JOA-####-###### 자동 포맷터
+// buildTextSpan 오버라이드로 ghost(남은 자리 미리보기)를 TextField 내부에서 직접 렌더링
+// → 외부 Text 위젯과의 폰트/위치 불일치 없음
+class _JoaGhostController extends TextEditingController {
+  // 형식: JOA-0000-000000 (15자)
+  static const _full = 'JOA-0000-000000';
+
+  _JoaGhostController() : super(text: 'JOA-');
+
+  @override
+  TextSpan buildTextSpan({required BuildContext context, TextStyle? style, required bool withComposing}) {
+    final typed = text;
+    final remaining = typed.length < _full.length ? _full.substring(typed.length) : '';
+    return TextSpan(
+      style: style,
+      children: [
+        TextSpan(text: typed),
+        if (remaining.isNotEmpty)
+          TextSpan(
+            text: remaining,
+            style: (style ?? const TextStyle()).copyWith(
+              color: Colors.grey.shade400,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class _JoaCodeFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(TextEditingValue old, TextEditingValue val) {

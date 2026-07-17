@@ -33,9 +33,11 @@ export default async function handler(req, res) {
     }
   }
 
+  const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash-image';
+
   try {
     const apiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${key}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -72,10 +72,11 @@ web/
 - 스튜디오: 전체 허용
 
 ## API
-- **모델**: `gemini-2.5-flash-image`
+- **모델**: `gemini-2.5-flash-image` — 이미지 생성 전용 모델이라 `gemini-3.5-flash`로 임의로 올리면 안 됨(이미지 출력을 지원 안 할 수 있음)
 - **엔드포인트**: `https://generativelanguage.googleapis.com/v1beta/models/...`
 - **이미지 비율**: 9:16 (세로형)
 - **응답 형식**: `inlineData.data` (base64)
+- 2026-07-10: `main.dart`의 안 쓰이던 `_geminiModel` 상수(죽은 코드) 제거, `api/image.js`는 `process.env.GEMINI_MODEL || 'gemini-2.5-flash-image'`로 변경 — 필요 시 Vercel 환경변수로 이미지 모델을 바꿀 수 있음(기본값은 유지)
 
 ## 빌드 방법
 
